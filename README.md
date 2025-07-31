@@ -489,3 +489,478 @@ databricks configure --profile my-profile --token
    # Import back
    databricks workspace import-dir ./local-backup /Users/me/project-restored
    ```
+
+# Databricks Asset Bundles Reference Card
+
+## Overview
+
+Databricks Asset Bundles (DABs) provide a declarative way to define, deploy, and manage Databricks assets as code. They enable version control, CI/CD integration, and environment management for your data and ML workflows.
+
+## Core Concepts
+
+### Bundle Structure
+
+```
+my-bundle/
+├── databricks.yml          # Main configuration file
+├── src/                   # Source code directory
+│   ├── notebook.py
+│   └── job_script.py
+├── resources/             # Resource definitions
+│   ├── jobs.yml
+│   └── workflows.yml
+└── environments/          # Environment-specific configs
+    ├── dev.yml
+    └── prod.yml
+```
+
+### Key Components
+
+- **Bundle Configuration**: `databricks.yml` - defines bundle metadata and structure
+- **Resources**: Jobs, workflows, clusters, notebooks, etc.
+- **Targets**: Environment-specific configurations (dev, staging, prod)
+- **Variables**: Parameterization for different environments
+- **Artifacts**: Code files that get uploaded and deployed
+
+## Basic Configuration
+
+### databricks.yml Structure
+
+```yaml
+bundle:
+  name: my-data-pipeline
+  
+include:
+  - resources/*.yml
+  
+variables:
+  catalog:
+    description: "Unity Catalog name"
+    default: "dev_catalog"
+  
+targets:
+  dev:
+    variables:
+      catalog: "dev_catalog"
+    workspace:
+      host: "https://your-workspace.databricks.com"
+      
+  prod:
+    variables:
+      catalog: "prod_catalog"
+    workspace:
+      host: "https://prod-workspace.databricks.com"
+```
+
+## Resource Types & Configuration
+
+### Jobs
+
+```yaml
+resources:
+  jobs:
+    etl_pipeline:
+      name: "ETL Pipeline - ${var.environment}"
+      job_clusters:
+        - job_cluster_key: "main_cluster"
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 2
+            
+      tasks:
+        - task_key: "extract"
+          job_cluster_key: "main_cluster"
+          notebook_task:
+            notebook_path: "./src/extract_data.py"
+            base_parameters:
+              catalog: "${var.catalog}"
+              
+        - task_key: "transform"
+          depends_on:
+            - task_key: "extract"
+          job_cluster_key: "main_cluster"
+          spark_python_task:
+            python_file: "./src/transform.py"
+            parameters: ["--catalog", "${var.catalog}"]
+```
+
+### Workflows (Delta Live Tables)
+
+```yaml
+resources:
+  pipelines:
+    dlt_pipeline:
+      name: "DLT Pipeline - ${var.environment}"
+      catalog: "${var.catalog}"
+      target: "${var.schema}"
+      libraries:
+        - notebook:
+            path: "./src/dlt_bronze.py"
+        - notebook:
+            path: "./src/dlt_silver.py"
+      configuration:
+        "pipeline.environment": "${var.environment}"
+      clusters:
+        - label: "default"
+          num_workers: 2
+          node_type_id: "i3.xlarge"
+```
+
+### Model Serving Endpoints
+
+```yaml
+resources:
+  model_serving_endpoints:
+    recommendation_model:
+      name: "recommendation-model-${var.environment}"
+      config:
+        served_models:
+          - model_name: "recommendation_model"
+            model_version: "1"
+            workload_size: "Small"
+            scale_to_zero_enabled: true
+```
+
+### Experiments
+
+```yaml
+resources:
+  experiments:
+    ml_experiment:
+      name: "/Shared/ml-experiment-${var.environment}"
+      artifact_location: "s3://my-bucket/experiments/${var.environment}/"
+```
+
+### Clusters
+
+```yaml
+resources:
+  clusters:
+    analytics_cluster:
+      cluster_name: "Analytics Cluster - ${var.environment}"
+      spark_version: "13.3.x-scala2.12"
+      node_type_id: "i3.xlarge"
+      num_workers: 2
+      autotermination_minutes: 30
+      spark_conf:
+        "spark.sql.adaptive.enabled": "true"
+        "spark.sql.adaptive.coalescePartitions.enabled": "true"
+```
+
+## Advanced Components
+
+### Variables and Templating
+
+```yaml
+variables:
+  environment:
+    description: "Environment name"
+    type: "string"
+    
+  worker_count:
+    description: "Number of workers"
+    type: "number"
+    default: 2
+    
+  feature_flags:
+    description: "Feature toggles"
+    type: "complex"
+    default:
+      enable_monitoring: true
+      use_photon: false
+
+# Usage in resources
+resources:
+  jobs:
+    my_job:
+      name: "Job-${var.environment}"
+      job_clusters:
+        - new_cluster:
+            num_workers: ${var.worker_count}
+            runtime_engine: |
+              ${var.feature_flags.use_photon ? "PHOTON" : "STANDARD"}
+```
+
+### Conditional Resources
+
+```yaml
+resources:
+  jobs:
+    # Only create in production
+    prod_job:
+      name: "Production Only Job"
+      # ... job configuration
+      
+targets:
+  dev:
+    resources:
+      jobs:
+        prod_job: null  # Exclude from dev
+        
+  prod:
+    # Will include prod_job
+```
+
+### Custom Artifacts and Libraries
+
+```yaml
+artifacts:
+  my_wheel:
+    type: "whl"
+    path: "./dist/my_package-0.1.0-py3-none-any.whl"
+    
+  custom_jar:
+    type: "jar"
+    path: "./target/my-library.jar"
+
+resources:
+  jobs:
+    job_with_custom_libs:
+      name: "Job with Custom Libraries"
+      tasks:
+        - task_key: "main"
+          libraries:
+            - whl: "${artifacts.my_wheel.path}"
+            - jar: "${artifacts.custom_jar.path}"
+```
+
+## Functions and Elements Reference
+
+|Element      |Type  |Description                   |Example                          |
+|-------------|------|------------------------------|---------------------------------|
+|`bundle.name`|string|Bundle identifier             |`my-data-pipeline`               |
+|`bundle.git` |object|Git repository info           |`url`, `branch`, `commit`        |
+|`include`    |array |Include additional YAML files |`- resources/*.yml`              |
+|`variables`  |object|Define parameterizable values |See variables section            |
+|`targets`    |object|Environment-specific configs  |`dev`, `staging`, `prod`         |
+|`workspace`  |object|Databricks workspace config   |`host`, `profile`, `auth_type`   |
+|`artifacts`  |object|Build artifacts to upload     |`whl`, `jar`, `file`             |
+|`resources`  |object|Databricks resources to deploy|Jobs, clusters, experiments, etc.|
+
+### Resource-Specific Elements
+
+#### Jobs
+
+|Element              |Description           |Example                       |
+|---------------------|----------------------|------------------------------|
+|`job_clusters`       |Cluster configurations|Reusable cluster specs        |
+|`tasks`              |Job task definitions  |Notebook, Python, JAR tasks   |
+|`schedule`           |Job scheduling        |Cron expressions, dependencies|
+|`email_notifications`|Alert configurations  |Success/failure notifications |
+|`timeout_seconds`    |Job timeout           |Maximum execution time        |
+|`max_concurrent_runs`|Concurrency limit     |Parallel execution control    |
+
+#### Delta Live Tables
+
+|Element        |Description            |Example                 |
+|---------------|-----------------------|------------------------|
+|`libraries`    |DLT notebook/file paths|Source definitions      |
+|`configuration`|Pipeline settings      |Environment variables   |
+|`clusters`     |Compute configurations |Worker specifications   |
+|`continuous`   |Streaming mode toggle  |`true` for continuous   |
+|`development`  |Development mode       |Enhanced error reporting|
+
+#### Model Serving
+
+|Element                |Description            |Example                    |
+|-----------------------|-----------------------|---------------------------|
+|`served_models`        |Model versions to serve|Model name, version, config|
+|`traffic_config`       |Traffic routing        |A/B testing, canary        |
+|`workload_size`        |Compute size           |Small, Medium, Large       |
+|`scale_to_zero_enabled`|Auto-scaling           |Cost optimization          |
+
+## CLI Commands
+
+### Basic Operations
+
+```bash
+# Initialize new bundle
+databricks bundle init
+
+# Validate bundle configuration
+databricks bundle validate
+
+# Deploy to target environment
+databricks bundle deploy --target dev
+
+# Run a job from bundle
+databricks bundle run my_job --target dev
+
+# Destroy bundle resources
+databricks bundle destroy --target dev
+
+# Generate bundle documentation
+databricks bundle generate docs
+```
+
+### Advanced Commands
+
+```bash
+# Deploy with variable override
+databricks bundle deploy --target prod --var="worker_count=10"
+
+# Dry-run deployment
+databricks bundle deploy --target dev --dry-run
+
+# Deploy specific resources only
+databricks bundle deploy --target dev --resource jobs.etl_pipeline
+
+# Validate with specific target
+databricks bundle validate --target prod
+
+# View deployed resources
+databricks bundle summary --target dev
+```
+
+## Best Practices
+
+### Project Structure
+
+```
+project/
+├── databricks.yml
+├── src/
+│   ├── common/           # Shared utilities
+│   ├── jobs/            # Job-specific code
+│   ├── dlt/             # DLT pipeline code
+│   └── ml/              # ML training code
+├── resources/
+│   ├── jobs.yml
+│   ├── workflows.yml
+│   └── ml.yml
+├── environments/
+│   ├── dev.yml
+│   ├── staging.yml
+│   └── prod.yml
+├── tests/               # Unit tests
+└── docs/               # Documentation
+```
+
+### Environment Management
+
+```yaml
+# Use environment-specific variables
+targets:
+  dev:
+    variables:
+      catalog: "dev_catalog"
+      cluster_size: "small"
+      worker_count: 1
+      
+  prod:
+    variables:
+      catalog: "prod_catalog"
+      cluster_size: "large"
+      worker_count: 10
+    workspace:
+      host: "https://prod.databricks.com"
+```
+
+### Security and Secrets
+
+```yaml
+# Reference secrets in jobs
+resources:
+  jobs:
+    secure_job:
+      tasks:
+        - task_key: "main"
+          notebook_task:
+            notebook_path: "./src/secure_notebook.py"
+            base_parameters:
+              api_key: "{{secrets/my-scope/api-key}}"
+```
+
+### Resource Naming Conventions
+
+```yaml
+# Consistent naming with environment prefixes
+resources:
+  jobs:
+    data_ingestion_job:
+      name: "${var.environment}_data_ingestion"
+      
+  clusters:
+    analytics_cluster:
+      cluster_name: "${var.environment}_analytics_cluster"
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Validation Errors**: Check YAML syntax and required fields
+1. **Permission Errors**: Verify workspace permissions and authentication
+1. **Resource Conflicts**: Ensure unique resource names across environments
+1. **Path Issues**: Use relative paths from bundle root
+1. **Variable Resolution**: Check variable scoping and default values
+
+### Debug Commands
+
+```bash
+# Verbose output
+databricks bundle deploy --target dev --verbose
+
+# Check bundle configuration
+databricks bundle validate --target dev --output json
+
+# View generated Terraform
+databricks bundle deploy --target dev --dry-run --output terraform
+```
+
+## Advanced Techniques
+
+### Multi-Environment Deployment
+
+```yaml
+# Use matrix deployments for multiple environments
+targets:
+  dev:
+    variables: { environment: "dev", scale: 1 }
+  staging:
+    variables: { environment: "staging", scale: 3 }
+  prod:
+    variables: { environment: "prod", scale: 10 }
+```
+
+### Dynamic Resource Generation
+
+```yaml
+# Generate multiple similar jobs
+variables:
+  regions:
+    default: ["us-east-1", "us-west-2", "eu-west-1"]
+
+# Use loops in templates (advanced usage)
+resources:
+  jobs:
+    # This would require custom templating logic
+    data_sync_${region}:
+      name: "Data Sync - ${region}"
+      # ... configuration per region
+```
+
+### Integration with CI/CD
+
+```yaml
+# GitHub Actions example
+name: Deploy Bundle
+on:
+  push:
+    branches: [main]
+    
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Deploy to Production
+        run: |
+          databricks bundle deploy --target prod
+        env:
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+```
+
+This reference card provides a comprehensive overview of Databricks Asset Bundles, from basic setup to advanced deployment patterns. Use it as a quick reference while developing and deploying your data and ML workflows.
+
