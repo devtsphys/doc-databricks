@@ -962,5 +962,575 @@ jobs:
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
 ```
 
-This reference card provides a comprehensive overview of Databricks Asset Bundles, from basic setup to advanced deployment patterns. Use it as a quick reference while developing and deploying your data and ML workflows.
+# Azure Databricks File Handling & Mounting Reference Card
 
+## Table of Contents
+
+1. [File System Overview](#file-system-overview)
+1. [DBFS (Databricks File System)](#dbfs-databricks-file-system)
+1. [Azure Storage Integration](#azure-storage-integration)
+1. [Mounting Azure Storage](#mounting-azure-storage)
+1. [File Operations](#file-operations)
+1. [Best Practices](#best-practices)
+1. [Troubleshooting](#troubleshooting)
+
+## File System Overview
+
+### Available File Systems
+
+- **DBFS** - Databricks File System (default)
+- **Azure Blob Storage** - Object storage service
+- **Azure Data Lake Storage Gen2** - Hierarchical namespace storage
+- **Azure Files** - SMB file shares
+
+### Path Formats
+
+```python
+# DBFS paths
+dbfs:/path/to/file
+/dbfs/path/to/file
+
+# Mounted storage paths
+/mnt/storage-name/path/to/file
+
+# Direct Azure storage paths
+abfss://container@storageaccount.dfs.core.windows.net/path/to/file
+wasbs://container@storageaccount.blob.core.windows.net/path/to/file
+```
+
+## DBFS (Databricks File System)
+
+### Basic DBFS Operations
+
+#### List Files
+
+```python
+# Using dbutils
+dbutils.fs.ls("/")
+dbutils.fs.ls("dbfs:/FileStore/")
+
+# Using Python os module
+import os
+os.listdir("/dbfs/")
+```
+
+#### Create Directory
+
+```python
+dbutils.fs.mkdirs("/mnt/data/new_folder")
+```
+
+#### Copy Files
+
+```python
+# Copy single file
+dbutils.fs.cp("source_path", "destination_path")
+
+# Copy recursively
+dbutils.fs.cp("source_folder", "destination_folder", recurse=True)
+```
+
+#### Remove Files
+
+```python
+# Remove single file
+dbutils.fs.rm("path/to/file")
+
+# Remove directory recursively
+dbutils.fs.rm("path/to/directory", recurse=True)
+```
+
+#### File Information
+
+```python
+# Get file info
+file_info = dbutils.fs.ls("path/to/file")[0]
+print(f"Name: {file_info.name}")
+print(f"Size: {file_info.size}")
+print(f"Path: {file_info.path}")
+```
+
+## Azure Storage Integration
+
+### Authentication Methods
+
+#### 1. Service Principal (Recommended for Production)
+
+```python
+# Set service principal credentials
+spark.conf.set("fs.azure.account.auth.type.<storage-account>.dfs.core.windows.net", "OAuth")
+spark.conf.set("fs.azure.account.oauth.provider.type.<storage-account>.dfs.core.windows.net", "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider")
+spark.conf.set("fs.azure.account.oauth2.client.id.<storage-account>.dfs.core.windows.net", "<application-id>")
+spark.conf.set("fs.azure.account.oauth2.client.secret.<storage-account>.dfs.core.windows.net", "<client-secret>")
+spark.conf.set("fs.azure.account.oauth2.client.endpoint.<storage-account>.dfs.core.windows.net", "https://login.microsoftonline.com/<tenant-id>/oauth2/token")
+```
+
+#### 2. Access Key
+
+```python
+spark.conf.set(
+    "fs.azure.account.key.<storage-account>.dfs.core.windows.net",
+    "<access-key>"
+)
+```
+
+#### 3. SAS Token
+
+```python
+spark.conf.set(
+    "fs.azure.sas.<container>.<storage-account>.dfs.core.windows.net",
+    "<sas-token>"
+)
+```
+
+## Mounting Azure Storage
+
+### Mount Azure Data Lake Storage Gen2
+
+#### Using Service Principal
+
+```python
+def mount_adls_gen2(storage_account, container, mount_point, client_id, client_secret, tenant_id):
+    """
+    Mount ADLS Gen2 container using service principal authentication
+    """
+    try:
+        # Check if already mounted
+        if any(mount.mountPoint == mount_point for mount in dbutils.fs.mounts()):
+            print(f"Mount point {mount_point} already exists")
+            return
+        
+        # Configuration for mounting
+        configs = {
+            "fs.azure.account.auth.type": "OAuth",
+            "fs.azure.account.oauth.provider.type": "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider",
+            "fs.azure.account.oauth2.client.id": client_id,
+            "fs.azure.account.oauth2.client.secret": client_secret,
+            "fs.azure.account.oauth2.client.endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/token"
+        }
+        
+        # Mount the storage
+        dbutils.fs.mount(
+            source=f"abfss://{container}@{storage_account}.dfs.core.windows.net/",
+            mount_point=mount_point,
+            extra_configs=configs
+        )
+        
+        print(f"Successfully mounted {container} to {mount_point}")
+        
+    except Exception as e:
+        print(f"Error mounting storage: {str(e)}")
+
+# Example usage
+mount_adls_gen2(
+    storage_account="mystorageaccount",
+    container="mycontainer",
+    mount_point="/mnt/datalake",
+    client_id="your-client-id",
+    client_secret="your-client-secret",
+    tenant_id="your-tenant-id"
+)
+```
+
+#### Using Access Key
+
+```python
+def mount_with_access_key(storage_account, container, mount_point, access_key):
+    """
+    Mount storage using access key
+    """
+    try:
+        if any(mount.mountPoint == mount_point for mount in dbutils.fs.mounts()):
+            print(f"Mount point {mount_point} already exists")
+            return
+            
+        dbutils.fs.mount(
+            source=f"abfss://{container}@{storage_account}.dfs.core.windows.net/",
+            mount_point=mount_point,
+            extra_configs={f"fs.azure.account.key.{storage_account}.dfs.core.windows.net": access_key}
+        )
+        
+        print(f"Successfully mounted {container} to {mount_point}")
+        
+    except Exception as e:
+        print(f"Error mounting storage: {str(e)}")
+```
+
+### Mount Azure Blob Storage
+
+```python
+def mount_blob_storage(storage_account, container, mount_point, access_key):
+    """
+    Mount Azure Blob Storage
+    """
+    try:
+        if any(mount.mountPoint == mount_point for mount in dbutils.fs.mounts()):
+            print(f"Mount point {mount_point} already exists")
+            return
+            
+        dbutils.fs.mount(
+            source=f"wasbs://{container}@{storage_account}.blob.core.windows.net",
+            mount_point=mount_point,
+            extra_configs={f"fs.azure.account.key.{storage_account}.blob.core.windows.net": access_key}
+        )
+        
+        print(f"Successfully mounted blob container {container} to {mount_point}")
+        
+    except Exception as e:
+        print(f"Error mounting blob storage: {str(e)}")
+```
+
+### Mount Management
+
+#### List All Mounts
+
+```python
+# Display all current mounts
+display(dbutils.fs.mounts())
+
+# Get mount information programmatically
+mounts = dbutils.fs.mounts()
+for mount in mounts:
+    print(f"Mount Point: {mount.mountPoint}")
+    print(f"Source: {mount.source}")
+    print("---")
+```
+
+#### Unmount Storage
+
+```python
+def unmount_storage(mount_point):
+    """
+    Safely unmount storage
+    """
+    try:
+        dbutils.fs.unmount(mount_point)
+        print(f"Successfully unmounted {mount_point}")
+    except Exception as e:
+        print(f"Error unmounting {mount_point}: {str(e)}")
+
+# Example
+unmount_storage("/mnt/datalake")
+```
+
+#### Refresh Mount
+
+```python
+# Refresh mount if needed
+dbutils.fs.refreshMounts()
+```
+
+## File Operations
+
+### Reading Files
+
+#### Text Files
+
+```python
+# Read text file
+with open("/dbfs/mnt/datalake/file.txt", "r") as f:
+    content = f.read()
+
+# Using dbutils
+content = dbutils.fs.head("dbfs:/mnt/datalake/file.txt")
+```
+
+#### CSV Files with Spark
+
+```python
+# Read CSV file
+df = spark.read.option("header", "true").option("inferSchema", "true").csv("/mnt/datalake/data.csv")
+
+# Read with specific schema
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+
+schema = StructType([
+    StructField("id", IntegerType(), True),
+    StructField("name", StringType(), True),
+    StructField("value", StringType(), True)
+])
+
+df = spark.read.schema(schema).option("header", "true").csv("/mnt/datalake/data.csv")
+```
+
+#### Parquet Files
+
+```python
+# Read Parquet file
+df = spark.read.parquet("/mnt/datalake/data.parquet")
+
+# Read multiple Parquet files
+df = spark.read.parquet("/mnt/datalake/year=2023/month=*/")
+```
+
+#### JSON Files
+
+```python
+# Read JSON file
+df = spark.read.json("/mnt/datalake/data.json")
+
+# Read multiline JSON
+df = spark.read.option("multiline", "true").json("/mnt/datalake/data.json")
+```
+
+### Writing Files
+
+#### Write DataFrame to Different Formats
+
+```python
+# Write as Parquet (recommended for analytics)
+df.write.mode("overwrite").parquet("/mnt/datalake/output/data.parquet")
+
+# Write as CSV
+df.write.mode("overwrite").option("header", "true").csv("/mnt/datalake/output/data.csv")
+
+# Write as JSON
+df.write.mode("overwrite").json("/mnt/datalake/output/data.json")
+
+# Write with partitioning
+df.write.mode("overwrite").partitionBy("year", "month").parquet("/mnt/datalake/partitioned_data/")
+```
+
+#### Write Modes
+
+```python
+# Overwrite existing data
+df.write.mode("overwrite").parquet("/mnt/datalake/data/")
+
+# Append to existing data
+df.write.mode("append").parquet("/mnt/datalake/data/")
+
+# Error if data exists (default)
+df.write.mode("error").parquet("/mnt/datalake/data/")
+
+# Ignore if data exists
+df.write.mode("ignore").parquet("/mnt/datalake/data/")
+```
+
+### File Upload/Download
+
+#### Upload Files
+
+```python
+# Upload file to DBFS
+dbutils.fs.put("/mnt/datalake/uploaded_file.txt", "File content here", overwrite=True)
+
+# Copy local file to mounted storage
+dbutils.fs.cp("file:/databricks/driver/local_file.txt", "/mnt/datalake/")
+```
+
+#### Download Files
+
+```python
+# Copy from mounted storage to local
+dbutils.fs.cp("/mnt/datalake/file.txt", "file:/databricks/driver/downloaded_file.txt")
+```
+
+## Best Practices
+
+### Security
+
+1. **Use Service Principal Authentication** for production environments
+1. **Store secrets in Azure Key Vault** and reference them in Databricks
+1. **Use managed identity** when possible
+1. **Rotate access keys** regularly
+1. **Apply least privilege principle** for storage access
+
+### Performance
+
+1. **Use appropriate file formats**:
+- Parquet for analytics workloads
+- Delta Lake for ACID transactions
+- ORC for Hive compatibility
+1. **Optimize file sizes**:
+- Target 100MB-1GB per file
+- Avoid small files (< 10MB)
+- Use `coalesce()` or `repartition()` when writing
+1. **Use partitioning** for large datasets:
+
+```python
+# Good partitioning strategy
+df.write.partitionBy("year", "month").parquet("/mnt/datalake/partitioned/")
+
+# Avoid over-partitioning (too many small partitions)
+# Avoid under-partitioning (too few large partitions)
+```
+
+### Mounting Strategy
+
+```python
+# Centralized mount function
+def setup_storage_mounts():
+    """
+    Set up all required storage mounts for the workspace
+    """
+    mounts_config = [
+        {
+            "storage_account": "rawdata",
+            "container": "landing",
+            "mount_point": "/mnt/raw"
+        },
+        {
+            "storage_account": "processeddata", 
+            "container": "curated",
+            "mount_point": "/mnt/processed"
+        }
+    ]
+    
+    for config in mounts_config:
+        mount_adls_gen2(**config, 
+                       client_id=dbutils.secrets.get("keyvault", "client-id"),
+                       client_secret=dbutils.secrets.get("keyvault", "client-secret"),
+                       tenant_id=dbutils.secrets.get("keyvault", "tenant-id"))
+
+# Call at the beginning of notebooks
+setup_storage_mounts()
+```
+
+### Error Handling
+
+```python
+def safe_file_operation(operation, *args, **kwargs):
+    """
+    Wrapper for safe file operations with retry logic
+    """
+    import time
+    max_retries = 3
+    retry_delay = 5
+    
+    for attempt in range(max_retries):
+        try:
+            return operation(*args, **kwargs)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            print(f"Attempt {attempt + 1} failed: {str(e)}")
+            print(f"Retrying in {retry_delay} seconds...")
+            time.sleep(retry_delay)
+
+# Example usage
+def read_with_retry(path):
+    return safe_file_operation(spark.read.parquet, path)
+
+df = read_with_retry("/mnt/datalake/data.parquet")
+```
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### Mount Failures
+
+```python
+# Check if mount point is already in use
+existing_mounts = [mount.mountPoint for mount in dbutils.fs.mounts()]
+if "/mnt/datalake" in existing_mounts:
+    dbutils.fs.unmount("/mnt/datalake")
+
+# Verify credentials
+try:
+    dbutils.fs.ls("/mnt/datalake")
+    print("Mount successful and accessible")
+except Exception as e:
+    print(f"Mount issue: {str(e)}")
+```
+
+#### Permission Issues
+
+```python
+# Test write permissions
+try:
+    dbutils.fs.put("/mnt/datalake/test_write.txt", "test content", overwrite=True)
+    dbutils.fs.rm("/mnt/datalake/test_write.txt")
+    print("Write permissions confirmed")
+except Exception as e:
+    print(f"Write permission issue: {str(e)}")
+```
+
+#### File Not Found Errors
+
+```python
+def file_exists(path):
+    """
+    Check if file or directory exists
+    """
+    try:
+        dbutils.fs.ls(path)
+        return True
+    except:
+        return False
+
+# Usage
+if file_exists("/mnt/datalake/data.parquet"):
+    df = spark.read.parquet("/mnt/datalake/data.parquet")
+else:
+    print("File not found")
+```
+
+### Debugging Commands
+
+```python
+# Check Spark configuration
+spark.conf.get("fs.azure.account.auth.type")
+
+# List all Spark configurations
+configs = spark.sparkContext.getConf().getAll()
+for key, value in configs:
+    if "azure" in key.lower():
+        print(f"{key}: {value}")
+
+# Check current working directory
+import os
+print(f"Current working directory: {os.getcwd()}")
+
+# Test connectivity
+dbutils.fs.ls("abfss://container@storageaccount.dfs.core.windows.net/")
+```
+
+### Performance Monitoring
+
+```python
+# Monitor file sizes
+def analyze_directory(path):
+    """
+    Analyze files in a directory for size distribution
+    """
+    files = dbutils.fs.ls(path)
+    sizes = [f.size for f in files if not f.isDir()]
+    
+    if sizes:
+        import statistics
+        print(f"Total files: {len(sizes)}")
+        print(f"Total size: {sum(sizes):,} bytes")
+        print(f"Average size: {statistics.mean(sizes):,.0f} bytes")
+        print(f"Median size: {statistics.median(sizes):,.0f} bytes")
+        print(f"Min size: {min(sizes):,} bytes")
+        print(f"Max size: {max(sizes):,} bytes")
+        
+        # Identify small files (< 10MB)
+        small_files = [s for s in sizes if s < 10 * 1024 * 1024]
+        if small_files:
+            print(f"Small files (< 10MB): {len(small_files)} ({len(small_files)/len(sizes)*100:.1f}%)")
+
+# Usage
+analyze_directory("/mnt/datalake/data/")
+```
+
+## Quick Reference Commands
+
+```python
+# Essential dbutils.fs commands
+dbutils.fs.ls(path)                    # List directory contents
+dbutils.fs.mkdirs(path)               # Create directory
+dbutils.fs.cp(src, dst, recurse=True) # Copy files/directories  
+dbutils.fs.rm(path, recurse=True)     # Remove files/directories
+dbutils.fs.mv(src, dst)               # Move/rename files
+dbutils.fs.head(path, max_bytes=65536) # Read file head
+dbutils.fs.put(path, contents, overwrite=False) # Write string to file
+
+# Mount operations
+dbutils.fs.mount(source, mount_point, extra_configs) # Mount storage
+dbutils.fs.unmount(mount_point)       # Unmount storage
+dbutils.fs.mounts()                   # List all mounts
+dbutils.fs.refreshMounts()            # Refresh mount cache
+```
