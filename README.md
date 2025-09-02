@@ -1534,3 +1534,614 @@ dbutils.fs.unmount(mount_point)       # Unmount storage
 dbutils.fs.mounts()                   # List all mounts
 dbutils.fs.refreshMounts()            # Refresh mount cache
 ```
+
+
+# Databricks Unity Catalog Complete Reference Card
+
+## Overview
+
+Unity Catalog is Databricks’ unified governance solution for data and AI assets. It provides centralized access control, auditing, lineage, and data discovery across all workspaces.
+
+## Core Concepts & Hierarchy
+
+### Three-Level Namespace
+
+```
+catalog.schema.table
+catalog.schema.volume
+catalog.schema.function
+```
+
+### Object Types
+
+- **Catalogs**: Top-level containers for organizing data
+- **Schemas**: Logical groupings within catalogs
+- **Tables**: Structured data (managed/external)
+- **Views**: Virtual tables based on queries
+- **Functions**: Reusable SQL/Python functions
+- **Volumes**: File storage locations
+- **Models**: ML models (MLflow integration)
+
+## Catalog Management
+
+### Creating Catalogs
+
+```sql
+-- Create a new catalog
+CREATE CATALOG IF NOT EXISTS my_catalog
+COMMENT 'Production data catalog';
+
+-- Set properties
+ALTER CATALOG my_catalog SET PROPERTIES ('department' = 'analytics');
+
+-- Show catalogs
+SHOW CATALOGS;
+
+-- Describe catalog
+DESCRIBE CATALOG EXTENDED my_catalog;
+```
+
+### Setting Current Catalog
+
+```sql
+USE CATALOG my_catalog;
+SELECT current_catalog();
+```
+
+## Schema Management
+
+### Creating Schemas
+
+```sql
+-- Create schema
+CREATE SCHEMA IF NOT EXISTS my_catalog.sales_data
+COMMENT 'Sales analytics schema'
+LOCATION 's3://my-bucket/sales/';
+
+-- Create schema with properties
+CREATE SCHEMA my_catalog.hr_data
+WITH PROPERTIES (
+  'team' = 'people-analytics',
+  'env' = 'prod'
+);
+
+-- Show schemas
+SHOW SCHEMAS IN my_catalog;
+
+-- Set current schema
+USE my_catalog.sales_data;
+```
+
+## Table Management
+
+### Creating Tables
+
+```sql
+-- Managed table (Delta format by default)
+CREATE TABLE my_catalog.sales_data.transactions (
+  id BIGINT GENERATED ALWAYS AS IDENTITY,
+  customer_id STRING,
+  amount DECIMAL(10,2),
+  transaction_date DATE,
+  created_at TIMESTAMP DEFAULT current_timestamp()
+) 
+COMMENT 'Customer transaction records'
+TBLPROPERTIES (
+  'delta.autoOptimize.optimizeWrite' = 'true',
+  'delta.autoOptimize.autoCompact' = 'true'
+);
+
+-- External table
+CREATE TABLE my_catalog.sales_data.external_data
+USING DELTA
+LOCATION 's3://my-bucket/external-data/'
+AS SELECT * FROM temp_view;
+
+-- Create table as select (CTAS)
+CREATE TABLE my_catalog.sales_data.monthly_summary
+AS SELECT 
+  DATE_TRUNC('month', transaction_date) as month,
+  SUM(amount) as total_amount,
+  COUNT(*) as transaction_count
+FROM my_catalog.sales_data.transactions
+GROUP BY DATE_TRUNC('month', transaction_date);
+```
+
+### Table Operations
+
+```sql
+-- Show tables
+SHOW TABLES IN my_catalog.sales_data;
+
+-- Describe table
+DESCRIBE TABLE EXTENDED my_catalog.sales_data.transactions;
+
+-- Table history (Delta feature)
+DESCRIBE HISTORY my_catalog.sales_data.transactions;
+
+-- Optimize table
+OPTIMIZE my_catalog.sales_data.transactions
+ZORDER BY (customer_id, transaction_date);
+
+-- Vacuum old files
+VACUUM my_catalog.sales_data.transactions RETAIN 168 HOURS;
+
+-- Clone table
+CREATE TABLE my_catalog.sales_data.transactions_backup
+DEEP CLONE my_catalog.sales_data.transactions;
+```
+
+## Views Management
+
+### Creating Views
+
+```sql
+-- Standard view
+CREATE VIEW my_catalog.sales_data.high_value_customers AS
+SELECT customer_id, SUM(amount) as total_spent
+FROM my_catalog.sales_data.transactions
+WHERE amount > 1000
+GROUP BY customer_id;
+
+-- Materialized view
+CREATE MATERIALIZED VIEW my_catalog.sales_data.daily_sales AS
+SELECT 
+  transaction_date,
+  COUNT(*) as transaction_count,
+  SUM(amount) as daily_revenue
+FROM my_catalog.sales_data.transactions
+GROUP BY transaction_date;
+
+-- Refresh materialized view
+REFRESH MATERIALIZED VIEW my_catalog.sales_data.daily_sales;
+```
+
+## Functions
+
+### Creating Functions
+
+```sql
+-- SQL function
+CREATE FUNCTION my_catalog.sales_data.calculate_tax(amount DOUBLE, rate DOUBLE)
+RETURNS DOUBLE
+LANGUAGE SQL
+DETERMINISTIC
+CONTAINS SQL
+COMMENT 'Calculate tax amount'
+RETURN amount * rate;
+
+-- Python function
+CREATE FUNCTION my_catalog.sales_data.clean_email(email STRING)
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'Clean and validate email addresses'
+AS $$
+  import re
+  if email and re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+    return email.lower().strip()
+  return None
+$$;
+
+-- Use functions
+SELECT 
+  customer_id,
+  amount,
+  my_catalog.sales_data.calculate_tax(amount, 0.08) as tax_amount
+FROM my_catalog.sales_data.transactions;
+```
+
+## Volumes (File Storage)
+
+### Creating Volumes
+
+```sql
+-- Managed volume
+CREATE VOLUME IF NOT EXISTS my_catalog.sales_data.data_files
+COMMENT 'Storage for CSV and JSON files';
+
+-- External volume
+CREATE VOLUME my_catalog.sales_data.external_files
+LOCATION 's3://my-bucket/files/'
+COMMENT 'External file storage';
+
+-- Show volumes
+SHOW VOLUMES IN my_catalog.sales_data;
+```
+
+### Working with Volumes
+
+```python
+# Python - Upload files to volume
+dbutils.fs.cp("/FileStore/shared_uploads/data.csv", 
+              "/Volumes/my_catalog/sales_data/data_files/")
+
+# List files in volume
+dbutils.fs.ls("/Volumes/my_catalog/sales_data/data_files/")
+
+# Read from volume
+df = spark.read.csv("/Volumes/my_catalog/sales_data/data_files/data.csv", 
+                    header=True, inferSchema=True)
+```
+
+## Access Control & Permissions
+
+### Grant Permissions
+
+```sql
+-- Catalog level permissions
+GRANT USE CATALOG ON CATALOG my_catalog TO `analysts@company.com`;
+GRANT CREATE SCHEMA ON CATALOG my_catalog TO `data-engineers@company.com`;
+
+-- Schema level permissions
+GRANT USE SCHEMA ON SCHEMA my_catalog.sales_data TO `analysts@company.com`;
+GRANT CREATE TABLE ON SCHEMA my_catalog.sales_data TO `data-engineers@company.com`;
+
+-- Table level permissions
+GRANT SELECT ON TABLE my_catalog.sales_data.transactions TO `analysts@company.com`;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE my_catalog.sales_data.transactions 
+TO `data-engineers@company.com`;
+
+-- Function permissions
+GRANT EXECUTE ON FUNCTION my_catalog.sales_data.calculate_tax TO `analysts@company.com`;
+
+-- Volume permissions
+GRANT READ FILES ON VOLUME my_catalog.sales_data.data_files TO `analysts@company.com`;
+GRANT WRITE FILES ON VOLUME my_catalog.sales_data.data_files TO `data-engineers@company.com`;
+```
+
+### Revoke Permissions
+
+```sql
+REVOKE SELECT ON TABLE my_catalog.sales_data.transactions FROM `user@company.com`;
+```
+
+### Check Permissions
+
+```sql
+-- Show grants for a user
+SHOW GRANTS ON TABLE my_catalog.sales_data.transactions;
+
+-- Check current user's permissions
+SELECT current_user();
+DESCRIBE TABLE my_catalog.sales_data.transactions;
+```
+
+## Row-Level Security & Column Masking
+
+### Row-Level Security
+
+```sql
+-- Create row filter function
+CREATE FUNCTION my_catalog.sales_data.customer_filter(customer_region STRING)
+RETURNS BOOLEAN
+RETURN 
+  CASE 
+    WHEN is_member('regional-managers') THEN true
+    WHEN is_member('us-analysts') AND customer_region = 'US' THEN true
+    WHEN is_member('eu-analysts') AND customer_region = 'EU' THEN true
+    ELSE false
+  END;
+
+-- Apply row filter to table
+ALTER TABLE my_catalog.sales_data.transactions 
+SET ROW FILTER my_catalog.sales_data.customer_filter(region);
+```
+
+### Column Masking
+
+```sql
+-- Create masking function
+CREATE FUNCTION my_catalog.sales_data.mask_email(email STRING)
+RETURNS STRING
+RETURN 
+  CASE 
+    WHEN is_member('privacy-admins') THEN email
+    ELSE regexp_replace(email, '(.{2})(.+)(@.+)', '$1***$3')
+  END;
+
+-- Apply column mask
+ALTER TABLE my_catalog.sales_data.customers 
+ALTER COLUMN email SET MASK my_catalog.sales_data.mask_email;
+```
+
+## Data Lineage & Discovery
+
+### Information Schema Queries
+
+```sql
+-- Find all tables in catalog
+SELECT * FROM system.information_schema.tables 
+WHERE table_catalog = 'my_catalog';
+
+-- Find columns containing PII
+SELECT table_catalog, table_schema, table_name, column_name
+FROM system.information_schema.columns
+WHERE column_name ILIKE '%email%' OR column_name ILIKE '%ssn%';
+
+-- Table usage statistics
+SELECT * FROM system.information_schema.table_usage
+WHERE table_catalog = 'my_catalog'
+ORDER BY last_used DESC;
+```
+
+### System Tables for Governance
+
+```sql
+-- Audit access events
+SELECT * FROM system.access.audit
+WHERE service_name = 'unityCatalog'
+AND action_name = 'SELECT'
+ORDER BY event_time DESC;
+
+-- Monitor data access
+SELECT user_identity.email, request_params.full_name_arg
+FROM system.access.audit
+WHERE service_name = 'unityCatalog'
+AND action_name = 'SELECT';
+```
+
+## Data Quality & Constraints
+
+### Table Constraints
+
+```sql
+-- Add constraints to table
+ALTER TABLE my_catalog.sales_data.transactions
+ADD CONSTRAINT positive_amount CHECK (amount > 0);
+
+ALTER TABLE my_catalog.sales_data.transactions
+ADD CONSTRAINT valid_date CHECK (transaction_date >= '2020-01-01');
+
+-- Primary key (informational only in Delta)
+ALTER TABLE my_catalog.sales_data.transactions
+ADD CONSTRAINT pk_transactions PRIMARY KEY (id);
+
+-- Foreign key (informational only in Delta)
+ALTER TABLE my_catalog.sales_data.transactions
+ADD CONSTRAINT fk_customer 
+FOREIGN KEY (customer_id) REFERENCES my_catalog.sales_data.customers(id);
+```
+
+## Delta Lake Integration
+
+### Time Travel
+
+```sql
+-- Query table at specific timestamp
+SELECT * FROM my_catalog.sales_data.transactions 
+TIMESTAMP AS OF '2024-01-01 00:00:00';
+
+-- Query table at specific version
+SELECT * FROM my_catalog.sales_data.transactions 
+VERSION AS OF 5;
+
+-- Restore table to previous state
+RESTORE TABLE my_catalog.sales_data.transactions TO VERSION AS OF 5;
+```
+
+### Change Data Feed
+
+```sql
+-- Enable change data feed
+ALTER TABLE my_catalog.sales_data.transactions 
+SET TBLPROPERTIES (delta.enableChangeDataFeed = true);
+
+-- Query changes
+SELECT * FROM table_changes('my_catalog.sales_data.transactions', 2, 5);
+```
+
+## ML Integration
+
+### Model Registry
+
+```python
+# Python - Register model in Unity Catalog
+import mlflow
+
+mlflow.set_registry_uri("databricks-uc")
+
+# Log and register model
+with mlflow.start_run():
+    # Train your model here
+    model = train_model()
+    
+    # Log model
+    mlflow.sklearn.log_model(
+        model, 
+        "model",
+        registered_model_name="my_catalog.ml_models.customer_churn"
+    )
+```
+
+```sql
+-- SQL - Grant permissions on models
+GRANT EXECUTE ON MODEL my_catalog.ml_models.customer_churn TO `ml-engineers@company.com`;
+```
+
+## Python/PySpark Integration
+
+### Working with Unity Catalog in Python
+
+```python
+# Set current catalog and schema
+spark.sql("USE CATALOG my_catalog")
+spark.sql("USE SCHEMA sales_data")
+
+# Read from Unity Catalog table
+df = spark.table("my_catalog.sales_data.transactions")
+
+# Write to Unity Catalog table
+df.write \
+  .mode("overwrite") \
+  .option("overwriteSchema", "true") \
+  .saveAsTable("my_catalog.sales_data.processed_transactions")
+
+# Dynamic SQL with Unity Catalog
+table_name = "my_catalog.sales_data.transactions"
+df = spark.sql(f"SELECT * FROM {table_name} WHERE amount > 100")
+
+# Create temporary view for complex operations
+df.createOrReplaceTempView("temp_high_value")
+result = spark.sql("""
+    SELECT customer_id, AVG(amount) as avg_amount
+    FROM temp_high_value
+    GROUP BY customer_id
+""")
+```
+
+## Best Practices
+
+### Naming Conventions
+
+```sql
+-- Environment-based catalogs
+CREATE CATALOG dev_analytics;
+CREATE CATALOG staging_analytics;
+CREATE CATALOG prod_analytics;
+
+-- Domain-based schemas
+CREATE SCHEMA prod_analytics.customer_data;
+CREATE SCHEMA prod_analytics.financial_data;
+CREATE SCHEMA prod_analytics.marketing_data;
+
+-- Descriptive table names
+CREATE TABLE prod_analytics.customer_data.customer_profiles;
+CREATE TABLE prod_analytics.customer_data.customer_transactions_daily;
+```
+
+### Security Best Practices
+
+```sql
+-- Use service principals for automated jobs
+GRANT SELECT ON CATALOG prod_analytics TO `service-principal://etl-job-sp`;
+
+-- Implement least privilege access
+GRANT USE CATALOG ON CATALOG prod_analytics TO `all-analysts`;
+GRANT SELECT ON SCHEMA prod_analytics.public_data TO `all-analysts`;
+-- Grant specific table access as needed
+
+-- Use row-level security for multi-tenant scenarios
+CREATE FUNCTION prod_analytics.security.tenant_filter(tenant_id STRING)
+RETURNS BOOLEAN
+RETURN current_user() LIKE '%' || tenant_id || '%' OR is_member('admin');
+```
+
+### Performance Optimization
+
+```sql
+-- Use Z-ordering for query performance
+OPTIMIZE my_catalog.sales_data.transactions
+ZORDER BY (customer_id, transaction_date);
+
+-- Partition large tables
+CREATE TABLE my_catalog.sales_data.transactions_partitioned (
+  id BIGINT,
+  customer_id STRING,
+  amount DECIMAL(10,2),
+  transaction_date DATE
+)
+PARTITIONED BY (DATE_FORMAT(transaction_date, 'yyyy-MM'));
+
+-- Use liquid clustering for evolving access patterns
+CREATE TABLE my_catalog.sales_data.transactions_clustered (
+  id BIGINT,
+  customer_id STRING,
+  amount DECIMAL(10,2),
+  transaction_date DATE
+)
+CLUSTER BY (customer_id, transaction_date);
+```
+
+## Troubleshooting Common Issues
+
+### Permission Errors
+
+```sql
+-- Check current permissions
+SHOW GRANTS ON TABLE my_catalog.sales_data.transactions;
+
+-- Verify current user
+SELECT current_user();
+
+-- Check catalog access
+SHOW CATALOGS;
+```
+
+### Metadata Issues
+
+```sql
+-- Refresh table metadata
+REFRESH TABLE my_catalog.sales_data.transactions;
+
+-- Repair table (for external tables)
+MSCK REPAIR TABLE my_catalog.sales_data.external_table;
+
+-- Check table properties
+SHOW TBLPROPERTIES my_catalog.sales_data.transactions;
+```
+
+### Common Error Messages
+
+- **“PERMISSION_DENIED”**: User lacks required permissions
+- **“SCHEMA_NOT_FOUND”**: Schema doesn’t exist or no access
+- **“TABLE_OR_VIEW_NOT_FOUND”**: Table doesn’t exist or no SELECT permission
+- **“INVALID_PARAMETER_VALUE.CATALOG_NAME”**: Catalog name format incorrect
+
+## Useful System Functions
+
+```sql
+-- Identity and access functions
+SELECT current_user();
+SELECT current_catalog();
+SELECT current_schema();
+SELECT is_member('group-name');
+
+-- Metadata functions
+SELECT current_timestamp();
+SELECT current_date();
+SELECT uuid();
+
+-- Information schema queries
+SELECT * FROM system.information_schema.catalogs;
+SELECT * FROM system.information_schema.schemata;
+SELECT * FROM system.information_schema.tables;
+SELECT * FROM system.information_schema.columns;
+SELECT * FROM system.information_schema.functions;
+```
+
+## Monitoring and Observability
+
+### Query History
+
+```sql
+-- Query usage patterns
+SELECT 
+  query_start_time,
+  user_name,
+  query_text,
+  total_duration_ms
+FROM system.query.history
+WHERE query_text ILIKE '%my_catalog%'
+ORDER BY query_start_time DESC;
+```
+
+### Billing and Usage
+
+```python
+# Python - Monitor compute usage
+usage_df = spark.sql("""
+    SELECT 
+        usage_date,
+        workspace_id,
+        sku_name,
+        usage_quantity,
+        dollar_amount
+    FROM system.billing.usage
+    WHERE usage_date >= '2024-01-01'
+    ORDER BY usage_date DESC
+""")
+
+display(usage_df)
+```
+
+This reference card covers the essential Unity Catalog concepts, syntax, and best practices. Keep it handy for quick reference when working with Databricks Unity Catalog!
