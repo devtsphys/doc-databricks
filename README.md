@@ -1,6 +1,12 @@
 # Databricks references
 
-# Databricks Utilities (dbutils) Cheat Sheet
+- [Databricks utilities](#Databricks-Utilities)
+- [Databricks CLI](#Databricks-CLI)
+- [Databricks Asset Bundles](#Databricks-Asset-Bundles)
+- [Databricks Unity Catalog](#Databricks-Unity-Catalog)
+
+
+# Databricks Utilities
 
 ## Overview
 
@@ -261,236 +267,2031 @@ dbutils.fs.mount(
    - Remember widgets are notebook-specific
 
 
-# Databricks CLI Command Reference
+# Databricks CLI
 
 ## Installation & Setup
 
+### Installation
+
+#### Method 1: Using Homebrew (macOS/Linux) - Recommended
 ```bash
-# Installation
-pip install databricks-cli
+# Install via Homebrew
+brew tap databricks/tap
+brew install databricks
 
-# Configure with access token
-databricks configure --token
-# Enter your workspace URL and access token when prompted
+# Upgrade
+brew upgrade databricks
 
-# Configure with username/password
-databricks configure
-# Enter your workspace URL, username, and password when prompted
-
-# Configure with profile
-databricks configure --profile my-profile --token
+# Verify installation
+databricks --version
 ```
 
-## Core Commands
+#### Method 2: Direct Binary Installation (Bash/Shell)
+```bash
+# Download and install Databricks CLI binary (Linux/macOS)
+curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `databricks -h` | Show help for CLI | `databricks -h` |
-| `databricks --version` | Show version | `databricks --version` |
-| `databricks configure` | Configure authentication | `databricks configure --token --profile prod` |
-| `databricks configure --help` | Show configure options | `databricks configure --help` |
+# Or using wget
+wget -O - https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
 
-## Workspace Commands
+# Manual download and install (Linux)
+DATABRICKS_CLI_VERSION="0.230.0"  # Replace with desired version
+curl -fsSL "https://github.com/databricks/cli/releases/download/v${DATABRICKS_CLI_VERSION}/databricks_cli_${DATABRICKS_CLI_VERSION}_linux_amd64.tar.gz" | tar -xz -C /tmp
+sudo mv /tmp/databricks /usr/local/bin/
+chmod +x /usr/local/bin/databricks
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `databricks workspace ls` | List workspace contents | `databricks workspace ls /Users/me` |
-| `databricks workspace mkdirs` | Create directory | `databricks workspace mkdirs /Users/me/project` |
-| `databricks workspace import` | Import file to workspace | `databricks workspace import example.py /Users/me/example -l PYTHON` |
-| `databricks workspace export` | Export from workspace | `databricks workspace export /Users/me/notebook.py notebook.py` |
-| `databricks workspace export-dir` | Export directory contents | `databricks workspace export-dir /Users/me/project ./local-dir` |
-| `databricks workspace import-dir` | Import directory | `databricks workspace import-dir ./local-dir /Users/me/project` |
-| `databricks workspace delete` | Delete workspace object | `databricks workspace delete /Users/me/old-notebook` |
-| `databricks workspace get-status` | Get workspace item status | `databricks workspace get-status /Users/me/notebook` |
+# Manual download and install (macOS Intel)
+curl -fsSL "https://github.com/databricks/cli/releases/download/v${DATABRICKS_CLI_VERSION}/databricks_cli_${DATABRICKS_CLI_VERSION}_darwin_amd64.tar.gz" | tar -xz -C /tmp
+sudo mv /tmp/databricks /usr/local/bin/
+chmod +x /usr/local/bin/databricks
 
-## DBFS Commands
+# macOS (Apple Silicon - M1/M2/M3)
+curl -fsSL "https://github.com/databricks/cli/releases/download/v${DATABRICKS_CLI_VERSION}/databricks_cli_${DATABRICKS_CLI_VERSION}_darwin_arm64.tar.gz" | tar -xz -C /tmp
+sudo mv /tmp/databricks /usr/local/bin/
+chmod +x /usr/local/bin/databricks
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `databricks fs ls` | List DBFS contents | `databricks fs ls dbfs:/FileStore/` |
-| `databricks fs mkdirs` | Create DBFS directory | `databricks fs mkdirs dbfs:/FileStore/my-dir` |
-| `databricks fs cp` | Copy to/from DBFS | `databricks fs cp ./local-file dbfs:/FileStore/my-file` |
-| `databricks fs mv` | Move DBFS file | `databricks fs mv dbfs:/FileStore/old dbfs:/FileStore/new` |
-| `databricks fs rm` | Remove from DBFS | `databricks fs rm dbfs:/FileStore/old-file` |
-| `databricks fs cat` | View DBFS file content | `databricks fs cat dbfs:/FileStore/my-file` |
-| `databricks fs head` | View beginning of file | `databricks fs head -n 10 dbfs:/FileStore/my-file` |
-| `databricks fs put` | Upload local file to DBFS | `databricks fs put ./local-file dbfs:/FileStore/target-file` |
+# Verify installation
+databricks --version
+which databricks
+```
 
-## Cluster Commands
+#### Method 3: Using Windows Package Managers
+```bash
+# Using winget
+winget install Databricks.DatabricksCLI
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `databricks clusters list` | List all clusters | `databricks clusters list` |
-| `databricks clusters create` | Create a cluster | `databricks clusters create --json-file cluster-config.json` |
-| `databricks clusters edit` | Edit cluster configuration | `databricks clusters edit 0123-456789-abcdefg --json-file new-config.json` |
-| `databricks clusters start` | Start a cluster | `databricks clusters start 0123-456789-abcdefg` |
-| `databricks clusters restart` | Restart a cluster | `databricks clusters restart 0123-456789-abcdefg` |
-| `databricks clusters terminate` | Stop a cluster | `databricks clusters terminate 0123-456789-abcdefg` |
-| `databricks clusters permanent-delete` | Delete a cluster | `databricks clusters permanent-delete 0123-456789-abcdefg` |
-| `databricks clusters get` | Get cluster info | `databricks clusters get 0123-456789-abcdefg` |
-| `databricks clusters spark-versions` | List spark versions | `databricks clusters spark-versions` |
-| `databricks clusters node-types` | List node types | `databricks clusters node-types` |
+# Using Chocolatey (Experimental)
+choco install databricks-cli
 
-## Jobs Commands
+# Verify
+databricks --version
+```
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `databricks jobs list` | List all jobs | `databricks jobs list` |
-| `databricks jobs create` | Create a job | `databricks jobs create --json-file job-config.json` |
-| `databricks jobs get` | Get job details | `databricks jobs get 12345` |
-| `databricks jobs delete` | Delete a job | `databricks jobs delete 12345` |
-| `databricks jobs reset` | Reset a job | `databricks jobs reset 12345 --json-file new-config.json` |
-| `databricks jobs run-now` | Run a job now | `databricks jobs run-now 12345` |
-| `databricks jobs runs list` | List job runs | `databricks jobs runs list --job-id 12345` |
-| `databricks jobs runs get` | Get run details | `databricks jobs runs get 67890` |
-| `databricks jobs runs cancel` | Cancel a run | `databricks jobs runs cancel 67890` |
-| `databricks jobs runs submit` | Submit one-time run | `databricks jobs runs submit --json-file run-config.json` |
+#### Method 4: Using Snap (Linux)
+```bash
+# Install via Snap
+sudo snap install databricks --classic
 
-## Instance Pool Commands
+# Upgrade
+sudo snap refresh databricks
+```
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `databricks instance-pools list` | List all pools | `databricks instance-pools list` |
-| `databricks instance-pools create` | Create pool | `databricks instance-pools create --json-file pool-config.json` |
-| `databricks instance-pools edit` | Edit pool | `databricks instance-pools edit pool-id --json-file new-config.json` |
-| `databricks instance-pools get` | Get pool info | `databricks instance-pools get pool-id` |
-| `databricks instance-pools delete` | Delete pool | `databricks instance-pools delete pool-id` |
+#### Method 5: Using pip (Python-based - Legacy CLI)
+```bash
+# Note: This installs the legacy CLI (v0.18 and below) - NOT RECOMMENDED
+pip install databricks-cli
 
-## Library Commands
+# For the modern CLI, use one of the methods above
+```
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `databricks libraries list` | List cluster libraries | `databricks libraries list --cluster-id 0123-456789-abcdefg` |
-| `databricks libraries install` | Install libraries | `databricks libraries install --cluster-id 0123-456789-abcdefg --jar dbfs:/FileStore/my.jar` |
-| `databricks libraries uninstall` | Uninstall libraries | `databricks libraries uninstall --cluster-id 0123-456789-abcdefg --jar dbfs:/FileStore/my.jar` |
-| `databricks libraries all-cluster-statuses` | Get all library statuses | `databricks libraries all-cluster-statuses` |
+#### Verify Installation
+```bash
+# Check version (should be 0.205 or above)
+databricks --version
 
-## Secret Commands
+# Check help
+databricks --help
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `databricks secrets list-scopes` | List secret scopes | `databricks secrets list-scopes` |
-| `databricks secrets create-scope` | Create scope | `databricks secrets create-scope --scope my-scope` |
-| `databricks secrets delete-scope` | Delete scope | `databricks secrets delete-scope --scope my-scope` |
-| `databricks secrets list` | List secrets in scope | `databricks secrets list --scope my-scope` |
-| `databricks secrets put` | Add/update secret | `databricks secrets put --scope my-scope --key my-key --string-value "password"` |
-| `databricks secrets delete` | Delete secret | `databricks secrets delete --scope my-scope --key my-key` |
+# List command groups
+databricks -h
+```
 
-## Token Commands
+---
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `databricks tokens list` | List tokens | `databricks tokens list` |
-| `databricks tokens create` | Create token | `databricks tokens create --comment "Jenkins automation" --lifetime-seconds 7776000` |
-| `databricks tokens revoke` | Revoke token | `databricks tokens revoke --token-id abcd1234` |
+### Authentication & Configuration
 
-## Groups and Users Commands
+#### OAuth Authentication (Recommended)
+```bash
+# Configure with OAuth (opens browser for authentication)
+databricks auth login --host https://<workspace-url>.cloud.databricks.com
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `databricks groups list` | List all groups | `databricks groups list` |
-| `databricks groups create` | Create group | `databricks groups create --group-name engineers` |
-| `databricks groups get` | Get group details | `databricks groups get --group-name engineers` |
-| `databricks groups delete` | Delete group | `databricks groups delete --group-name old-team` |
-| `databricks groups list-members` | List group members | `databricks groups list-members --group-name engineers` |
-| `databricks groups add-member` | Add group member | `databricks groups add-member --parent-name engineers --user-name john.doe@example.com` |
-| `databricks groups remove-member` | Remove member | `databricks groups remove-member --parent-name engineers --user-name john.doe@example.com` |
-| `databricks users list` | List users | `databricks users list` |
-| `databricks users create` | Create user | `databricks users create --user-name john.doe@example.com` |
-| `databricks users delete` | Delete user | `databricks users delete --user-name john.doe@example.com` |
+# With specific profile name
+databricks auth login --host https://<workspace-url>.cloud.databricks.com --profile my-profile
 
-## Workspace Conf Commands
+# List existing profiles
+databricks auth profiles
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `databricks workspace-conf get-status` | Get conf settings | `databricks workspace-conf get-status` |
-| `databricks workspace-conf set-status` | Update settings | `databricks workspace-conf set-status --json-file settings.json` |
+# View current profile settings
+databricks auth env --profile <profile-name>
 
-## Common Configuration Patterns
+# View OAuth token info
+databricks auth token --host https://<workspace-url>.cloud.databricks.com -p <profile>
+```
 
-### Cluster Configuration Example
+#### Personal Access Token Authentication
+```bash
+# Configure using environment variables
+export DATABRICKS_HOST="https://<workspace>.cloud.databricks.com"
+export DATABRICKS_TOKEN="<your-token>"
 
+# Or configure interactively (creates profile in ~/.databrickscfg)
+databricks configure --token
+
+# Test connection
+databricks workspace list /
+```
+
+#### Configuration File Structure
+Location: `~/.databrickscfg` (Linux/Mac) or `%USERPROFILE%\.databrickscfg` (Windows)
+
+```ini
+[DEFAULT]
+host = https://workspace.cloud.databricks.com
+token = dapi1234567890abcdef
+
+[production]
+host = https://prod-workspace.cloud.databricks.com
+token = dapi0987654321fedcba
+
+[development]
+host = https://dev-workspace.cloud.databricks.com
+token = dapi1122334455667788
+```
+
+#### Using Profiles
+```bash
+# Use specific profile
+databricks --profile production clusters list
+
+# Or set as environment variable
+export DATABRICKS_CONFIG_PROFILE="production"
+databricks clusters list
+```
+
+---
+
+## Core Command Categories
+
+### 1. Workspace Commands
+
+#### List Workspace Items
+```bash
+# List root workspace
+databricks workspace list /
+
+# List specific path
+databricks workspace list /Users/user@example.com
+
+# List with output format
+databricks workspace list /Shared --output json
+```
+
+#### Export Notebooks
+```bash
+# Export single notebook as source
+databricks workspace export /path/to/notebook notebook.py
+
+# Export as different formats
+databricks workspace export /path/to/notebook notebook.html --format HTML
+databricks workspace export /path/to/notebook notebook.ipynb --format JUPYTER
+databricks workspace export /path/to/notebook notebook.dbc --format DBC
+
+# Export entire directory
+databricks workspace export-dir /Workspace/MyProject ./local_backup
+```
+
+#### Import Notebooks
+```bash
+# Import notebook
+databricks workspace import notebook.py /Workspace/path/to/notebook --language PYTHON
+
+# Import from file
+databricks workspace import notebook.scala /path/to/notebook --language SCALA
+
+# Import directory
+databricks workspace import-dir ./local_project /Workspace/MyProject
+```
+
+#### Workspace Management
+```bash
+# Create directory (mkdirs creates parent directories)
+databricks workspace mkdirs /Workspace/new/folder/path
+
+# Delete item
+databricks workspace delete /path/to/file
+
+# Delete recursively
+databricks workspace delete /path/to/folder --recursive
+
+# Get workspace status
+databricks workspace get-status /path/to/item
+```
+
+---
+
+### 2. Clusters Commands
+
+#### List & Get Cluster Info
+```bash
+# List all clusters
+databricks clusters list
+
+# List with JSON output
+databricks clusters list --output json
+
+# Get cluster details
+databricks clusters get <cluster-id>
+
+# Example with specific cluster
+databricks clusters get 1234-567890-abcde123
+
+# List cluster events
+databricks clusters events <cluster-id>
+
+# Events with filters
+databricks clusters events <cluster-id> \
+  --start-time 1640000000000 \
+  --end-time 1640086400000 \
+  --order DESC \
+  --limit 100
+```
+
+#### Cluster Lifecycle
+```bash
+# Create cluster from JSON file
+databricks clusters create --json-file cluster-config.json
+
+# Create cluster with inline JSON (Linux/Mac)
+databricks clusters create --json '{
+  "cluster_name": "my-cluster",
+  "spark_version": "13.3.x-scala2.12",
+  "node_type_id": "i3.xlarge",
+  "num_workers": 2
+}'
+
+# Start cluster
+databricks clusters start <cluster-id>
+
+# Restart cluster
+databricks clusters restart <cluster-id>
+
+# Terminate cluster
+databricks clusters delete <cluster-id>
+
+# Permanent delete (removes configuration)
+databricks clusters permanent-delete <cluster-id>
+```
+
+#### Cluster Configuration Example (JSON)
 ```json
 {
-  "cluster_name": "my-cluster",
-  "spark_version": "7.3.x-scala2.12",
+  "cluster_name": "production-cluster",
+  "spark_version": "14.3.x-scala2.12",
   "node_type_id": "i3.xlarge",
-  "spark_conf": {
-    "spark.speculation": true
+  "num_workers": 4,
+  "autoscale": {
+    "min_workers": 2,
+    "max_workers": 8
   },
-  "num_workers": 2,
-  "autotermination_minutes": 30
+  "spark_conf": {
+    "spark.speculation": "true",
+    "spark.sql.adaptive.enabled": "true"
+  },
+  "spark_env_vars": {
+    "PYSPARK_PYTHON": "/databricks/python3/bin/python3"
+  },
+  "auto_termination_minutes": 120,
+  "enable_elastic_disk": true,
+  "cluster_source": "API"
 }
 ```
 
-### Job Configuration Example
+#### Advanced Cluster Operations
+```bash
+# Edit cluster configuration
+databricks clusters edit --json-file updated-config.json
 
+# Resize cluster (must be running)
+databricks clusters resize <cluster-id> --num-workers 8
+
+# List available node types
+databricks clusters list-node-types
+
+# List Spark versions
+databricks clusters spark-versions
+
+# Get cluster permissions
+databricks clusters get-permission-levels <cluster-id>
+
+# Change cluster owner (requires admin)
+databricks clusters change-owner <cluster-id> new-owner@example.com
+```
+
+---
+
+### 3. Jobs Commands
+
+#### List & Get Jobs
+```bash
+# List all jobs
+databricks jobs list
+
+# List with pagination
+databricks jobs list --limit 50 --offset 0
+
+# Get job details
+databricks jobs get <job-id>
+
+# Example
+databricks jobs get 123456789
+
+# List runs for a job
+databricks jobs list-runs --job-id <job-id>
+
+# Get specific run details
+databricks jobs get-run <run-id>
+
+# Get run output
+databricks jobs get-run-output <run-id>
+```
+
+#### Job Management
+```bash
+# Create job from JSON file
+databricks jobs create --json-file job-config.json
+
+# Create job with inline JSON (Linux/Mac)
+databricks jobs create --json '{
+  "name": "Daily ETL",
+  "tasks": [{
+    "task_key": "main_task",
+    "notebook_task": {
+      "notebook_path": "/Workspace/ETL/main",
+      "source": "WORKSPACE"
+    },
+    "existing_cluster_id": "cluster-123"
+  }]
+}'
+
+# Update entire job configuration
+databricks jobs reset <job-id> --json-file new-config.json
+
+# Update specific job settings
+databricks jobs update <job-id> --json-file partial-update.json
+
+# Delete job
+databricks jobs delete <job-id>
+
+# Run job now
+databricks jobs run-now <job-id>
+
+# Run with parameters (Linux/Mac)
+databricks jobs run-now <job-id> --json '{
+  "notebook_params": {"date": "2024-01-01", "env": "prod"}
+}'
+```
+
+#### Job Run Operations
+```bash
+# Submit one-time run
+databricks jobs submit --json-file one-time-job.json
+
+# Cancel run
+databricks jobs cancel-run <run-id>
+
+# Cancel all runs for a job
+databricks jobs cancel-all-runs <job-id>
+
+# Repair run (retry failed tasks)
+databricks jobs repair-run <run-id>
+
+# Export run results
+databricks jobs export-run <run-id>
+
+# List active runs
+databricks jobs list-runs --active-only
+```
+
+#### Job Configuration Example
 ```json
 {
-  "name": "Daily ETL Job",
-  "new_cluster": {
-    "spark_version": "7.3.x-scala2.12",
-    "node_type_id": "i3.xlarge",
-    "num_workers": 2
-  },
-  "notebook_task": {
-    "notebook_path": "/Users/me/my-notebook"
-  },
+  "name": "Multi-Task ETL Pipeline",
+  "tasks": [
+    {
+      "task_key": "extract_data",
+      "notebook_task": {
+        "notebook_path": "/Workspace/ETL/extract",
+        "source": "WORKSPACE",
+        "base_parameters": {
+          "environment": "production"
+        }
+      },
+      "new_cluster": {
+        "spark_version": "14.3.x-scala2.12",
+        "node_type_id": "i3.xlarge",
+        "num_workers": 2
+      }
+    },
+    {
+      "task_key": "transform_data",
+      "depends_on": [{"task_key": "extract_data"}],
+      "notebook_task": {
+        "notebook_path": "/Workspace/ETL/transform",
+        "source": "WORKSPACE"
+      },
+      "existing_cluster_id": "cluster-id"
+    }
+  ],
   "schedule": {
-    "quartz_cron_expression": "0 0 7 * * ?",
-    "timezone_id": "America/Los_Angeles"
+    "quartz_cron_expression": "0 0 8 * * ?",
+    "timezone_id": "America/Los_Angeles",
+    "pause_status": "UNPAUSED"
+  },
+  "email_notifications": {
+    "on_failure": ["team@example.com"],
+    "on_success": ["manager@example.com"]
+  },
+  "max_concurrent_runs": 1,
+  "timeout_seconds": 3600
+}
+```
+
+---
+
+### 4. Files (DBFS & Workspace) Commands
+
+#### Basic File Operations
+```bash
+# List files in DBFS
+databricks fs ls dbfs:/path/to/directory
+
+# List files in workspace volumes (Unity Catalog)
+databricks fs ls /Volumes/catalog/schema/volume
+
+# List with details
+databricks fs ls -l dbfs:/
+
+# Copy file to DBFS
+databricks fs cp local_file.csv dbfs:/data/file.csv
+
+# Copy from DBFS to local
+databricks fs cp dbfs:/data/file.csv ./local_file.csv
+
+# Copy recursively
+databricks fs cp -r ./local_dir dbfs:/data/dir
+
+# Copy with overwrite
+databricks fs cp --overwrite local.csv dbfs:/data/file.csv
+```
+
+#### File Management
+```bash
+# Remove file
+databricks fs rm dbfs:/path/to/file
+
+# Remove directory recursively
+databricks fs rm -r dbfs:/path/to/directory
+
+# Create directory
+databricks fs mkdirs dbfs:/new/directory
+
+# Move/rename
+databricks fs mv dbfs:/old/path dbfs:/new/path
+
+# View file contents (cat)
+databricks fs cat dbfs:/path/to/file.txt
+
+# View with head (first N bytes)
+databricks fs head dbfs:/logs/app.log
+```
+
+---
+
+### 5. Secrets Management
+
+#### Scope Management
+```bash
+# Create secret scope
+databricks secrets create-scope <scope-name>
+
+# Create scope with backend type
+databricks secrets create-scope <scope-name> --scope-backend-type DATABRICKS
+
+# List scopes
+databricks secrets list-scopes
+
+# Delete scope
+databricks secrets delete-scope <scope-name>
+```
+
+#### Secret Operations
+```bash
+# Put secret (prompts for value)
+databricks secrets put-secret <scope-name> <key-name>
+
+# Put secret with string value
+databricks secrets put-secret <scope-name> <key-name> --string-value "my-secret"
+
+# Put secret from file
+databricks secrets put-secret <scope-name> <key-name> --binary-file ./secret.key
+
+# List secrets in scope
+databricks secrets list-secrets <scope-name>
+
+# Delete secret
+databricks secrets delete-secret <scope-name> <key-name>
+```
+
+#### Access Control Lists (ACLs)
+```bash
+# Grant permission
+databricks secrets put-acl <scope-name> <principal> READ
+
+# Available permissions: READ, WRITE, MANAGE
+databricks secrets put-acl <scope-name> user@example.com WRITE
+
+# List ACLs for scope
+databricks secrets list-acls <scope-name>
+
+# Get ACL for specific principal
+databricks secrets get-acl <scope-name> <principal>
+
+# Delete ACL
+databricks secrets delete-acl <scope-name> <principal>
+```
+
+---
+
+### 6. Libraries Management
+
+#### Cluster Libraries
+```bash
+# List cluster libraries
+databricks libraries cluster-status <cluster-id>
+
+# Install JAR library
+databricks libraries install <cluster-id> --jar dbfs:/jars/mylib.jar
+
+# Install PyPI package
+databricks libraries install <cluster-id> --pypi pandas==2.0.0
+
+# Install Maven package
+databricks libraries install <cluster-id> \
+  --maven '{"coordinates": "com.example:package:1.0.0"}'
+
+# Install wheel file
+databricks libraries install <cluster-id> --whl dbfs:/wheels/mypackage-1.0-py3-none-any.whl
+
+# Install multiple libraries from JSON
+databricks libraries install <cluster-id> --json-file libraries.json
+
+# Uninstall library
+databricks libraries uninstall <cluster-id> --pypi pandas
+
+# Get library status
+databricks libraries all-cluster-statuses
+```
+
+#### Library Configuration Example (JSON)
+```json
+{
+  "cluster_id": "cluster-id",
+  "libraries": [
+    {"pypi": {"package": "pandas==2.0.0"}},
+    {"pypi": {"package": "scikit-learn>=1.3.0"}},
+    {"jar": "dbfs:/jars/custom-lib-1.0.jar"},
+    {"maven": {"coordinates": "com.databricks:spark-xml_2.12:0.16.0"}},
+    {"whl": "dbfs:/wheels/mypackage-1.0-py3-none-any.whl"}
+  ]
+}
+```
+
+---
+
+### 7. Instance Pools
+
+```bash
+# List instance pools
+databricks instance-pools list
+
+# Get pool details
+databricks instance-pools get <pool-id>
+
+# Create instance pool
+databricks instance-pools create --json-file pool-config.json
+
+# Edit instance pool
+databricks instance-pools edit <pool-id> --json-file updated-pool.json
+
+# Delete instance pool
+databricks instance-pools delete <pool-id>
+```
+
+#### Pool Configuration Example
+```json
+{
+  "instance_pool_name": "shared-pool",
+  "min_idle_instances": 2,
+  "max_capacity": 10,
+  "node_type_id": "i3.xlarge",
+  "idle_instance_autotermination_minutes": 15,
+  "enable_elastic_disk": true,
+  "preloaded_spark_versions": [
+    "14.3.x-scala2.12"
+  ]
+}
+```
+
+---
+
+### 8. Groups & Users (Identity Management)
+
+#### Group Management
+```bash
+# List groups
+databricks groups list
+
+# Create group
+databricks groups create <group-name>
+
+# Delete group
+databricks groups delete <group-name>
+
+# Get group details
+databricks groups get <group-name>
+
+# Add user to group
+databricks groups add-member <group-name> --user-name user@example.com
+
+# Add service principal to group
+databricks groups add-member <group-name> --service-principal-name app-id
+
+# Remove member
+databricks groups remove-member <group-name> --user-name user@example.com
+
+# List group members
+databricks groups list-members <group-name>
+```
+
+#### User Management
+```bash
+# List users
+databricks users list
+
+# Get user details
+databricks users get <user-id>
+
+# Create user (requires admin)
+databricks users create --user-name newuser@example.com
+
+# Update user
+databricks users update <user-id> --json '{"active": false}'
+
+# Delete user
+databricks users delete <user-id>
+```
+
+#### Service Principal Management
+```bash
+# List service principals
+databricks service-principals list
+
+# Get service principal
+databricks service-principals get <sp-id>
+
+# Create service principal
+databricks service-principals create --json-file sp-config.json
+
+# Delete service principal
+databricks service-principals delete <sp-id>
+```
+
+---
+
+### 9. Tokens Management
+
+```bash
+# Create token
+databricks tokens create --comment "CLI automation token" --lifetime-seconds 7776000
+
+# Create token with JSON
+databricks tokens create --json '{
+  "comment": "Production API token",
+  "lifetime_seconds": 7776000
+}'
+
+# List tokens
+databricks tokens list
+
+# Get token info
+databricks tokens get <token-id>
+
+# Revoke token
+databricks tokens delete <token-id>
+
+# List tokens for other users (admin only)
+databricks token-management list --created-by-username user@example.com
+```
+
+---
+
+### 10. Repos (Git Integration)
+
+```bash
+# List repos
+databricks repos list
+
+# Get repo details
+databricks repos get <repo-id>
+
+# Get repo by path
+databricks repos get --path /Repos/user@example.com/my-repo
+
+# Create repo
+databricks repos create --url https://github.com/user/repo --provider github
+
+# Create with specific path
+databricks repos create \
+  --url https://github.com/user/repo \
+  --provider github \
+  --path /Repos/user@example.com/my-repo
+
+# Update repo (pull latest changes)
+databricks repos update <repo-id> --branch main
+
+# Switch branch
+databricks repos update <repo-id> --branch feature-branch
+
+# Delete repo
+databricks repos delete <repo-id>
+
+# Supported providers: github, bitbucketCloud, gitLab, azureDevOpsServices
+```
+
+---
+
+### 11. Unity Catalog Commands
+
+#### Catalogs
+```bash
+# List catalogs
+databricks catalogs list
+
+# Get catalog details
+databricks catalogs get <catalog-name>
+
+# Create catalog
+databricks catalogs create <catalog-name>
+
+# Update catalog
+databricks catalogs update <catalog-name> --comment "Production catalog"
+
+# Delete catalog
+databricks catalogs delete <catalog-name>
+```
+
+#### Schemas
+```bash
+# List schemas
+databricks schemas list <catalog-name>
+
+# Get schema
+databricks schemas get <catalog-name>.<schema-name>
+
+# Create schema
+databricks schemas create <catalog-name>.<schema-name>
+
+# Delete schema
+databricks schemas delete <catalog-name>.<schema-name>
+```
+
+#### Tables
+```bash
+# List tables
+databricks tables list <catalog-name>.<schema-name>
+
+# Get table
+databricks tables get <catalog-name>.<schema-name>.<table-name>
+
+# Delete table
+databricks tables delete <catalog-name>.<schema-name>.<table-name>
+```
+
+#### Volumes
+```bash
+# List volumes
+databricks volumes list <catalog-name>.<schema-name>
+
+# Get volume
+databricks volumes get <catalog-name>.<schema-name>.<volume-name>
+
+# Create volume
+databricks volumes create <catalog-name>.<schema-name>.<volume-name> --json '{
+  "volume_type": "MANAGED"
+}'
+
+# Delete volume
+databricks volumes delete <catalog-name>.<schema-name>.<volume-name>
+```
+
+#### Grants
+```bash
+# Grant permissions
+databricks grants update <securable-type> <full-name> \
+  --principal user@example.com \
+  --privilege SELECT
+
+# Example: Grant SELECT on table
+databricks grants update table catalog.schema.table \
+  --principal user@example.com \
+  --privilege SELECT
+
+# Get grants
+databricks grants get <securable-type> <full-name>
+
+# Revoke grant
+databricks grants revoke <securable-type> <full-name> \
+  --principal user@example.com \
+  --privilege SELECT
+```
+
+---
+
+### 12. SQL Warehouses
+
+```bash
+# List SQL warehouses
+databricks sql-warehouses list
+
+# Get warehouse details
+databricks sql-warehouses get <warehouse-id>
+
+# Create SQL warehouse
+databricks sql-warehouses create --json-file warehouse-config.json
+
+# Start warehouse
+databricks sql-warehouses start <warehouse-id>
+
+# Stop warehouse
+databricks sql-warehouses stop <warehouse-id>
+
+# Edit warehouse
+databricks sql-warehouses edit <warehouse-id> --json-file config.json
+
+# Delete warehouse
+databricks sql-warehouses delete <warehouse-id>
+```
+
+---
+
+### 13. Bundles (Databricks Asset Bundles)
+
+```bash
+# Initialize new bundle
+databricks bundle init
+
+# Initialize with template
+databricks bundle init --template default-python
+
+# Validate bundle
+databricks bundle validate
+
+# Deploy bundle
+databricks bundle deploy
+
+# Deploy to specific target
+databricks bundle deploy --target production
+
+# Run bundle workflow
+databricks bundle run <workflow-name>
+
+# Destroy bundle resources
+databricks bundle destroy
+```
+
+---
+
+## Complete Command Reference Table
+
+| Category | Command | Description |
+|----------|---------|-------------|
+| **Auth** | `auth login` | Authenticate via OAuth |
+| | `auth token` | Get OAuth token info |
+| | `auth profiles` | List authentication profiles |
+| | `auth env` | View profile configuration |
+| **Workspace** | `workspace list` | List workspace items |
+| | `workspace export` | Export notebook/file |
+| | `workspace export-dir` | Export directory |
+| | `workspace import` | Import notebook/file |
+| | `workspace import-dir` | Import directory |
+| | `workspace mkdirs` | Create directory |
+| | `workspace delete` | Delete item |
+| | `workspace get-status` | Get item metadata |
+| **Clusters** | `clusters list` | List all clusters |
+| | `clusters get` | Get cluster details |
+| | `clusters create` | Create new cluster |
+| | `clusters edit` | Edit cluster config |
+| | `clusters start` | Start cluster |
+| | `clusters restart` | Restart cluster |
+| | `clusters delete` | Terminate cluster |
+| | `clusters permanent-delete` | Permanently delete cluster |
+| | `clusters resize` | Resize cluster |
+| | `clusters events` | Get cluster events |
+| | `clusters list-node-types` | List node types |
+| | `clusters spark-versions` | List Spark versions |
+| | `clusters change-owner` | Change cluster owner |
+| **Jobs** | `jobs list` | List all jobs |
+| | `jobs get` | Get job details |
+| | `jobs create` | Create new job |
+| | `jobs reset` | Replace job config |
+| | `jobs update` | Update job settings |
+| | `jobs delete` | Delete job |
+| | `jobs run-now` | Trigger job run |
+| | `jobs submit` | Submit one-time run |
+| | `jobs list-runs` | List job runs |
+| | `jobs get-run` | Get run details |
+| | `jobs get-run-output` | Get run output |
+| | `jobs cancel-run` | Cancel run |
+| | `jobs cancel-all-runs` | Cancel all runs |
+| | `jobs repair-run` | Retry failed tasks |
+| **Files** | `fs ls` | List files |
+| | `fs cp` | Copy files |
+| | `fs rm` | Remove files |
+| | `fs mkdirs` | Create directory |
+| | `fs mv` | Move/rename |
+| | `fs cat` | View file contents |
+| | `fs head` | View file head |
+| **Secrets** | `secrets create-scope` | Create secret scope |
+| | `secrets list-scopes` | List scopes |
+| | `secrets delete-scope` | Delete scope |
+| | `secrets put-secret` | Store secret |
+| | `secrets list-secrets` | List secrets |
+| | `secrets delete-secret` | Delete secret |
+| | `secrets put-acl` | Grant permission |
+| | `secrets list-acls` | List permissions |
+| | `secrets get-acl` | Get ACL |
+| | `secrets delete-acl` | Remove permission |
+| **Libraries** | `libraries cluster-status` | List cluster libraries |
+| | `libraries install` | Install library |
+| | `libraries uninstall` | Uninstall library |
+| | `libraries all-cluster-statuses` | Get all statuses |
+| **Pools** | `instance-pools list` | List instance pools |
+| | `instance-pools get` | Get pool details |
+| | `instance-pools create` | Create pool |
+| | `instance-pools edit` | Edit pool |
+| | `instance-pools delete` | Delete pool |
+| **Groups** | `groups list` | List groups |
+| | `groups get` | Get group details |
+| | `groups create` | Create group |
+| | `groups delete` | Delete group |
+| | `groups add-member` | Add member |
+| | `groups remove-member` | Remove member |
+| | `groups list-members` | List members |
+| **Users** | `users list` | List users |
+| | `users get` | Get user details |
+| | `users create` | Create user |
+| | `users update` | Update user |
+| | `users delete` | Delete user |
+| **Service Principals** | `service-principals list` | List service principals |
+| | `service-principals get` | Get details |
+| | `service-principals create` | Create SP |
+| | `service-principals delete` | Delete SP |
+| **Tokens** | `tokens create` | Create access token |
+| | `tokens list` | List tokens |
+| | `tokens get` | Get token info |
+| | `tokens delete` | Revoke token |
+| | `token-management list` | List all tokens (admin) |
+| **Repos** | `repos list` | List repos |
+| | `repos get` | Get repo details |
+| | `repos create` | Create repo |
+| | `repos update` | Update/pull repo |
+| | `repos delete` | Delete repo |
+| **Unity Catalog** | `catalogs list` | List catalogs |
+| | `catalogs get` | Get catalog |
+| | `catalogs create` | Create catalog |
+| | `catalogs delete` | Delete catalog |
+| | `schemas list` | List schemas |
+| | `schemas get` | Get schema |
+| | `schemas create` | Create schema |
+| | `schemas delete` | Delete schema |
+| | `tables list` | List tables |
+| | `tables get` | Get table |
+| | `tables delete` | Delete table |
+| | `volumes list` | List volumes |
+| | `volumes get` | Get volume |
+| | `volumes create` | Create volume |
+| | `volumes delete` | Delete volume |
+| | `grants update` | Grant permissions |
+| | `grants get` | Get grants |
+| | `grants revoke` | Revoke permissions |
+| **SQL** | `sql-warehouses list` | List warehouses |
+| | `sql-warehouses get` | Get warehouse |
+| | `sql-warehouses create` | Create warehouse |
+| | `sql-warehouses start` | Start warehouse |
+| | `sql-warehouses stop` | Stop warehouse |
+| | `sql-warehouses edit` | Edit warehouse |
+| | `sql-warehouses delete` | Delete warehouse |
+| **Bundles** | `bundle init` | Initialize bundle |
+| | `bundle validate` | Validate bundle |
+| | `bundle deploy` | Deploy bundle |
+| | `bundle run` | Run workflow |
+| | `bundle destroy` | Destroy resources |
+| **API** | `api` | Make REST API requests |
+| **System** | `configure` | Configure CLI |
+| | `version` | Show CLI version |
+| | `completion` | Generate shell completion |
+
+---
+
+## Advanced Techniques
+
+### 1. Scripting & Automation
+
+#### Bash Script Example - Cluster Management
+```bash
+#!/bin/bash
+set -e
+
+PROFILE="production"
+CLUSTER_ID="1234-567890-cluster"
+
+# Function to check cluster state
+check_cluster_state() {
+    databricks --profile "$PROFILE" clusters get "$CLUSTER_ID" \
+        --output json | jq -r '.state'
+}
+
+# Start cluster if not running
+STATE=$(check_cluster_state)
+if [ "$STATE" != "RUNNING" ]; then
+    echo "Starting cluster..."
+    databricks --profile "$PROFILE" clusters start "$CLUSTER_ID"
+    
+    # Wait for cluster to start
+    while [ "$(check_cluster_state)" != "RUNNING" ]; do
+        echo "Waiting for cluster to start..."
+        sleep 30
+    done
+    echo "Cluster is running"
+fi
+
+# Run job
+echo "Running job..."
+RUN_ID=$(databricks --profile "$PROFILE" jobs run-now 456 --output json | jq -r '.run_id')
+echo "Job run ID: $RUN_ID"
+
+# Monitor job status
+while true; do
+    STATUS=$(databricks --profile "$PROFILE" jobs get-run "$RUN_ID" --output json | jq -r '.state.life_cycle_state')
+    echo "Job status: $STATUS"
+    
+    if [ "$STATUS" = "TERMINATED" ]; then
+        RESULT=$(databricks --profile "$PROFILE" jobs get-run "$RUN_ID" --output json | jq -r '.state.result_state')
+        echo "Job completed with result: $RESULT"
+        
+        if [ "$RESULT" = "SUCCESS" ]; then
+            exit 0
+        else
+            echo "Job failed!"
+            exit 1
+        fi
+    fi
+    
+    sleep 30
+done
+```
+
+#### Python Script Example - Workspace Backup
+```python
+#!/usr/bin/env python3
+import subprocess
+import json
+import os
+from datetime import datetime
+
+PROFILE = "production"
+BACKUP_DIR = f"./backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+def run_command(cmd):
+    """Execute databricks CLI command and return output"""
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise Exception(f"Command failed: {result.stderr}")
+    return result.stdout
+
+def backup_notebooks():
+    """Backup all notebooks from workspace"""
+    print(f"Creating backup directory: {BACKUP_DIR}")
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    
+    # Export workspace
+    cmd = f"databricks --profile {PROFILE} workspace export-dir / {BACKUP_DIR}"
+    run_command(cmd)
+    print(f"Notebooks backed up to {BACKUP_DIR}")
+
+def backup_jobs():
+    """Backup all job configurations"""
+    jobs_dir = os.path.join(BACKUP_DIR, "jobs")
+    os.makedirs(jobs_dir, exist_ok=True)
+    
+    # List all jobs
+    cmd = f"databricks --profile {PROFILE} jobs list --output json"
+    output = run_command(cmd)
+    jobs = json.loads(output).get('jobs', [])
+    
+    # Export each job configuration
+    for job in jobs:
+        job_id = job['job_id']
+        job_name = job['settings']['name'].replace('/', '_')
+        
+        cmd = f"databricks --profile {PROFILE} jobs get {job_id} --output json"
+        job_config = run_command(cmd)
+        
+        with open(os.path.join(jobs_dir, f"{job_id}_{job_name}.json"), 'w') as f:
+            f.write(job_config)
+    
+    print(f"Backed up {len(jobs)} job configurations")
+
+def backup_clusters():
+    """Backup all cluster configurations"""
+    clusters_dir = os.path.join(BACKUP_DIR, "clusters")
+    os.makedirs(clusters_dir, exist_ok=True)
+    
+    cmd = f"databricks --profile {PROFILE} clusters list --output json"
+    output = run_command(cmd)
+    clusters = json.loads(output).get('clusters', [])
+    
+    for cluster in clusters:
+        cluster_id = cluster['cluster_id']
+        cluster_name = cluster['cluster_name'].replace('/', '_')
+        
+        cmd = f"databricks --profile {PROFILE} clusters get {cluster_id} --output json"
+        cluster_config = run_command(cmd)
+        
+        with open(os.path.join(clusters_dir, f"{cluster_name}.json"), 'w') as f:
+            f.write(cluster_config)
+    
+    print(f"Backed up {len(clusters)} cluster configurations")
+
+if __name__ == "__main__":
+    try:
+        backup_notebooks()
+        backup_jobs()
+        backup_clusters()
+        print(f"\nBackup completed successfully: {BACKUP_DIR}")
+    except Exception as e:
+        print(f"Backup failed: {e}")
+        exit(1)
+```
+
+### 2. JSON Output Processing with jq
+
+```bash
+# Get all running clusters with their names and IDs
+databricks clusters list --output json | \
+  jq '.clusters[] | select(.state=="RUNNING") | {name: .cluster_name, id: .cluster_id}'
+
+# Get all jobs scheduled to run
+databricks jobs list --output json | \
+  jq '.jobs[] | select(.settings.schedule != null) | {name: .settings.name, schedule: .settings.schedule}'
+
+# Find clusters by tag
+databricks clusters list --output json | \
+  jq '.clusters[] | select(.custom_tags.Environment == "production")'
+
+# Get total number of workers across all running clusters
+databricks clusters list --output json | \
+  jq '[.clusters[] | select(.state=="RUNNING") | .num_workers] | add'
+
+# Export all notebooks in a directory
+databricks workspace list /Users/user@example.com --output json | \
+  jq -r '.objects[] | select(.object_type=="NOTEBOOK") | .path' | \
+  while read path; do
+    filename=$(basename "$path")
+    databricks workspace export "$path" "./${filename}.py"
+    echo "Exported: $path"
+  done
+
+# List all failed job runs from today
+databricks jobs list-runs --output json | \
+  jq '.runs[] | select(.state.result_state == "FAILED") | {job_id, run_id, start_time}'
+
+# Get cluster costs (if cost tags are set)
+databricks clusters list --output json | \
+  jq '.clusters[] | {name: .cluster_name, cost: .custom_tags.cost_center}'
+```
+
+### 3. Bulk Operations
+
+#### Delete All Terminated Clusters
+```bash
+#!/bin/bash
+databricks clusters list --output json | \
+  jq -r '.clusters[] | select(.state == "TERMINATED") | .cluster_id' | \
+  while read cluster_id; do
+    echo "Permanently deleting cluster: $cluster_id"
+    databricks clusters permanent-delete "$cluster_id"
+  done
+```
+
+#### Export All Job Configurations
+```bash
+#!/bin/bash
+BACKUP_DIR="./jobs_backup_$(date +%Y%m%d)"
+mkdir -p "$BACKUP_DIR"
+
+databricks jobs list --output json | \
+  jq -r '.jobs[] | "\(.job_id)|\(.settings.name)"' | \
+  while IFS='|' read -r job_id job_name; do
+    safe_name=$(echo "$job_name" | tr '/' '_' | tr ' ' '_')
+    echo "Exporting job: $job_name (ID: $job_id)"
+    databricks jobs get "$job_id" --output json > "$BACKUP_DIR/${job_id}_${safe_name}.json"
+  done
+
+echo "All jobs exported to $BACKUP_DIR"
+```
+
+#### Cancel All Running Jobs
+```bash
+#!/bin/bash
+echo "Finding all active runs..."
+databricks jobs list-runs --active-only --output json | \
+  jq -r '.runs[] | "\(.run_id)|\(.run_name)"' | \
+  while IFS='|' read -r run_id run_name; do
+    echo "Cancelling run: $run_name (ID: $run_id)"
+    databricks jobs cancel-run "$run_id"
+  done
+```
+
+#### Install Library on Multiple Clusters
+```bash
+#!/bin/bash
+LIBRARY="pandas==2.1.0"
+
+# Get all running clusters
+databricks clusters list --output json | \
+  jq -r '.clusters[] | select(.state == "RUNNING") | .cluster_id' | \
+  while read cluster_id; do
+    echo "Installing $LIBRARY on cluster $cluster_id"
+    databricks libraries install "$cluster_id" --pypi "$LIBRARY"
+  done
+```
+
+### 4. Environment-Specific Configurations
+
+#### Multi-Environment Deployment Script
+```bash
+#!/bin/bash
+
+deploy_to_env() {
+    local ENV=$1
+    local PROFILE=$2
+    
+    echo "Deploying to $ENV environment..."
+    
+    # Import notebooks
+    databricks --profile "$PROFILE" workspace import-dir \
+        ./notebooks "/Production/${ENV}"
+    
+    # Update job with environment-specific config
+    databricks --profile "$PROFILE" jobs reset 123 \
+        --json-file "configs/job_${ENV}.json"
+    
+    # Trigger job
+    RUN_ID=$(databricks --profile "$PROFILE" jobs run-now 123 \
+        --json "{\"notebook_params\": {\"env\": \"${ENV}\"}}" \
+        --output json | jq -r '.run_id')
+    
+    echo "Deployment to $ENV completed. Run ID: $RUN_ID"
+}
+
+# Deploy to each environment
+deploy_to_env "dev" "development"
+deploy_to_env "staging" "staging"
+deploy_to_env "prod" "production"
+```
+
+#### Configuration Management
+```bash
+# Development
+export DATABRICKS_CONFIG_PROFILE="dev"
+databricks jobs run-now 123
+
+# Staging
+export DATABRICKS_CONFIG_PROFILE="staging"
+databricks jobs run-now 456
+
+# Production
+export DATABRICKS_CONFIG_PROFILE="prod"
+databricks jobs run-now 789
+
+# Or use inline profile specification
+databricks --profile dev jobs run-now 123
+databricks --profile staging jobs run-now 456
+databricks --profile prod jobs run-now 789
+```
+
+### 5. Error Handling & Retry Logic
+
+#### Robust Script with Error Handling
+```bash
+#!/bin/bash
+set -euo pipefail
+
+# Configuration
+MAX_RETRIES=3
+RETRY_DELAY=10
+CLUSTER_ID="cluster-123"
+
+# Function to retry commands
+retry() {
+    local retries=$1
+    shift
+    local cmd="$@"
+    local count=0
+    
+    until $cmd; do
+        exit_code=$?
+        count=$((count + 1))
+        
+        if [ $count -lt $retries ]; then
+            echo "Command failed with exit code $exit_code. Retry $count/$retries..."
+            sleep $RETRY_DELAY
+        else
+            echo "Command failed after $retries retries"
+            return $exit_code
+        fi
+    done
+    
+    return 0
+}
+
+# Function to start cluster with retry
+start_cluster() {
+    echo "Starting cluster $CLUSTER_ID..."
+    
+    if retry $MAX_RETRIES databricks clusters start "$CLUSTER_ID"; then
+        echo "Cluster started successfully"
+        return 0
+    else
+        echo "Failed to start cluster" >&2
+        return 1
+    fi
+}
+
+# Function to wait for cluster
+wait_for_cluster() {
+    echo "Waiting for cluster to be ready..."
+    
+    local timeout=600  # 10 minutes
+    local elapsed=0
+    
+    while [ $elapsed -lt $timeout ]; do
+        STATE=$(databricks clusters get "$CLUSTER_ID" --output json | jq -r '.state')
+        
+        if [ "$STATE" = "RUNNING" ]; then
+            echo "Cluster is ready"
+            return 0
+        elif [ "$STATE" = "ERROR" ] || [ "$STATE" = "TERMINATED" ]; then
+            echo "Cluster failed to start: $STATE" >&2
+            return 1
+        fi
+        
+        echo "Cluster state: $STATE (waiting...)"
+        sleep 10
+        elapsed=$((elapsed + 10))
+    done
+    
+    echo "Timeout waiting for cluster" >&2
+    return 1
+}
+
+# Main execution
+if start_cluster && wait_for_cluster; then
+    echo "Proceeding with job execution..."
+    databricks jobs run-now 456
+else
+    echo "Cluster setup failed" >&2
+    exit 1
+fi
+```
+
+### 6. CI/CD Integration Examples
+
+#### GitHub Actions Workflow
+```yaml
+name: Deploy to Databricks
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+          echo "$HOME/.databricks/bin" >> $GITHUB_PATH
+      
+      - name: Configure Databricks CLI
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          databricks configure --token <<EOF
+          $DATABRICKS_HOST
+          $DATABRICKS_TOKEN
+          EOF
+      
+      - name: Deploy notebooks
+        run: |
+          databricks workspace import-dir ./notebooks /Production/notebooks
+      
+      - name: Update job configuration
+        run: |
+          databricks jobs reset 123 --json-file ./configs/job.json
+      
+      - name: Run tests
+        run: |
+          RUN_ID=$(databricks jobs run-now 456 --output json | jq -r '.run_id')
+          echo "Test run ID: $RUN_ID"
+          
+          # Wait for completion
+          while true; do
+            STATE=$(databricks jobs get-run "$RUN_ID" --output json | jq -r '.state.life_cycle_state')
+            if [ "$STATE" = "TERMINATED" ]; then
+              RESULT=$(databricks jobs get-run "$RUN_ID" --output json | jq -r '.state.result_state')
+              if [ "$RESULT" != "SUCCESS" ]; then
+                echo "Tests failed!"
+                exit 1
+              fi
+              break
+            fi
+            sleep 30
+          done
+```
+
+#### GitLab CI Pipeline
+```yaml
+stages:
+  - validate
+  - deploy
+  - test
+
+variables:
+  DATABRICKS_HOST: "https://your-workspace.cloud.databricks.com"
+
+validate:
+  stage: validate
+  image: python:3.10
+  script:
+    - curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+    - export PATH="$HOME/.databricks/bin:$PATH"
+    - databricks --version
+    - databricks bundle validate
+  only:
+    - merge_requests
+
+deploy_staging:
+  stage: deploy
+  image: python:3.10
+  script:
+    - curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+    - export PATH="$HOME/.databricks/bin:$PATH"
+    - export DATABRICKS_TOKEN=$STAGING_TOKEN
+    - databricks workspace import-dir ./notebooks /Staging
+    - databricks jobs reset 123 --json-file ./configs/staging-job.json
+  only:
+    - staging
+  environment:
+    name: staging
+
+deploy_production:
+  stage: deploy
+  image: python:3.10
+  script:
+    - curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+    - export PATH="$HOME/.databricks/bin:$PATH"
+    - export DATABRICKS_TOKEN=$PROD_TOKEN
+    - databricks workspace import-dir ./notebooks /Production
+    - databricks jobs reset 789 --json-file ./configs/prod-job.json
+  only:
+    - main
+  environment:
+    name: production
+  when: manual
+```
+
+### 7. Monitoring & Alerting
+
+#### Cluster Cost Monitor
+```bash
+#!/bin/bash
+# Monitor cluster costs and send alerts
+
+COST_THRESHOLD=1000
+ALERT_EMAIL="ops@example.com"
+
+# Get all running clusters
+CLUSTERS=$(databricks clusters list --output json | \
+  jq -r '.clusters[] | select(.state == "RUNNING") | {
+    name: .cluster_name,
+    id: .cluster_id,
+    workers: .num_workers,
+    type: .node_type_id,
+    uptime: .start_time
+  }')
+
+# Calculate estimated costs (example logic)
+TOTAL_COST=0
+
+echo "$CLUSTERS" | jq -c '.' | while read cluster; do
+    NAME=$(echo "$cluster" | jq -r '.name')
+    WORKERS=$(echo "$cluster" | jq -r '.workers')
+    
+    # Add your cost calculation logic here
+    ESTIMATED_COST=$((WORKERS * 10))  # Example: $10 per worker
+    TOTAL_COST=$((TOTAL_COST + ESTIMATED_COST))
+    
+    echo "Cluster: $NAME - Estimated cost: \$ESTIMATED_COST"
+done
+
+# Send alert if threshold exceeded
+if [ $TOTAL_COST -gt $COST_THRESHOLD ]; then
+    echo "ALERT: Total cluster cost \$TOTAL_COST exceeds threshold \$COST_THRESHOLD"
+    # Send email or notification
+fi
+```
+
+#### Job Failure Monitor
+```bash
+#!/bin/bash
+# Monitor recent job failures and report
+
+HOURS_AGO=24
+SINCE_TIMESTAMP=$(($(date +%s) - (HOURS_AGO * 3600)))
+
+echo "Checking for failed jobs in the last $HOURS_AGO hours..."
+
+databricks jobs list-runs --output json | \
+  jq --arg since "$SINCE_TIMESTAMP" '.runs[] | 
+    select(.start_time > ($since | tonumber) and 
+           .state.result_state == "FAILED") | 
+    {
+      job_id,
+      run_id,
+      run_name,
+      error: .state.state_message
+    }' | \
+  jq -s '.' > failed_jobs.json
+
+FAILURE_COUNT=$(jq 'length' failed_jobs.json)
+
+if [ "$FAILURE_COUNT" -gt 0 ]; then
+    echo "Found $FAILURE_COUNT failed jobs:"
+    jq -r '.[] | "Job: \(.run_name) (ID: \(.job_id))\nRun ID: \(.run_id)\nError: \(.error)\n"' failed_jobs.json
+else
+    echo "No failed jobs found"
+fi
+```
+
+---
+
+## Common Use Cases & Workflows
+
+### 1. Daily ETL Pipeline Deployment
+
+```bash
+#!/bin/bash
+# Complete ETL pipeline deployment workflow
+
+set -e
+
+PROFILE="production"
+CLUSTER_ID="etl-cluster-123"
+JOB_ID="789"
+
+echo "=== Starting ETL Pipeline Deployment ==="
+
+# Step 1: Upload new data files
+echo "1. Uploading data files..."
+databricks --profile "$PROFILE" fs cp ./data/input.csv dbfs:/mnt/data/input.csv --overwrite
+
+# Step 2: Import updated notebooks
+echo "2. Importing notebooks..."
+databricks --profile "$PROFILE" workspace import-dir \
+    ./notebooks /Production/ETL --overwrite
+
+# Step 3: Ensure cluster is running
+echo "3. Starting cluster..."
+databricks --profile "$PROFILE" clusters start "$CLUSTER_ID"
+
+# Wait for cluster
+echo "Waiting for cluster to be ready..."
+sleep 60
+
+# Step 4: Run ETL job
+echo "4. Running ETL job..."
+RUN_ID=$(databricks --profile "$PROFILE" jobs run-now "$JOB_ID" \
+    --json '{"notebook_params": {"date": "'$(date +%Y-%m-%d)'"}}' \
+    --output json | jq -r '.run_id')
+
+echo "ETL job started with run ID: $RUN_ID"
+
+# Step 5: Monitor execution
+echo "5. Monitoring job execution..."
+while true; do
+    STATUS=$(databricks --profile "$PROFILE" jobs get-run "$RUN_ID" \
+        --output json | jq -r '.state.life_cycle_state')
+    
+    echo "Current status: $STATUS"
+    
+    if [ "$STATUS" = "TERMINATED" ]; then
+        RESULT=$(databricks --profile "$PROFILE" jobs get-run "$RUN_ID" \
+            --output json | jq -r '.state.result_state')
+        
+        if [ "$RESULT" = "SUCCESS" ]; then
+            echo "✓ ETL pipeline completed successfully"
+            
+            # Archive input file
+            databricks --profile "$PROFILE" fs mv \
+                dbfs:/mnt/data/input.csv \
+                dbfs:/mnt/archive/input_$(date +%Y%m%d).csv
+            
+            exit 0
+        else
+            echo "✗ ETL pipeline failed"
+            databricks --profile "$PROFILE" jobs get-run-output "$RUN_ID"
+            exit 1
+        fi
+    fi
+    
+    sleep 30
+done
+```
+
+### 2. Disaster Recovery & Backup
+
+```bash
+#!/bin/bash
+# Complete workspace backup script
+
+PROFILE="production"
+BACKUP_ROOT="./backups/$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$BACKUP_ROOT"
+
+echo "=== Starting Databricks Backup ==="
+echo "Backup location: $BACKUP_ROOT"
+
+# Backup workspace
+echo "1. Backing up workspace..."
+databricks --profile "$PROFILE" workspace export-dir / "$BACKUP_ROOT/workspace"
+
+# Backup all job configurations
+echo "2. Backing up jobs..."
+mkdir -p "$BACKUP_ROOT/jobs"
+databricks --profile "$PROFILE" jobs list --output json | \
+  jq -r '.jobs[] | .job_id' | \
+  while read job_id; do
+    databricks --profile "$PROFILE" jobs get "$job_id" \
+        --output json > "$BACKUP_ROOT/jobs/job_${job_id}.json"
+  done
+
+# Backup cluster configurations
+echo "3. Backing up clusters..."
+mkdir -p "$BACKUP_ROOT/clusters"
+databricks --profile "$PROFILE" clusters list --output json | \
+  jq -r '.clusters[] | .cluster_id' | \
+  while read cluster_id; do
+    databricks --profile "$PROFILE" clusters get "$cluster_id" \
+        --output json > "$BACKUP_ROOT/clusters/cluster_${cluster_id}.json"
+  done
+
+# Backup secrets (metadata only, not values)
+echo "4. Backing up secret scopes..."
+mkdir -p "$BACKUP_ROOT/secrets"
+databricks --profile "$PROFILE" secrets list-scopes --output json | \
+  jq -r '.scopes[] | .name' | \
+  while read scope; do
+    databricks --profile "$PROFILE" secrets list-secrets "$scope" \
+        --output json > "$BACKUP_ROOT/secrets/scope_${scope}.json"
+  done
+
+# Compress backup
+echo "5. Compressing backup..."
+tar -czf "${BACKUP_ROOT}.tar.gz" -C "$(dirname $BACKUP_ROOT)" "$(basename $BACKUP_ROOT)"
+rm -rf "$BACKUP_ROOT"
+
+echo "✓ Backup completed: ${BACKUP_ROOT}.tar.gz"
+```
+
+### 3. Development to Production Promotion
+
+```bash
+#!/bin/bash
+# Promote code from dev to production
+
+set -e
+
+DEV_PROFILE="development"
+PROD_PROFILE="production"
+TEMP_DIR="./promotion_$(date +%Y%m%d_%H%M%S)"
+
+mkdir -p "$TEMP_DIR"
+
+echo "=== Promoting to Production ==="
+
+# Step 1: Export from development
+echo "1. Exporting from development..."
+databricks --profile "$DEV_PROFILE" workspace export-dir \
+    /Development/Project "$TEMP_DIR/notebooks"
+
+# Step 2: Export job configuration
+echo "2. Exporting job configuration..."
+databricks --profile "$DEV_PROFILE" jobs get 123 \
+    --output json > "$TEMP_DIR/job_dev.json"
+
+# Step 3: Transform config for production
+echo "3. Transforming configuration..."
+jq '.settings.name = "PROD - " + .settings.name |
+    .settings.tasks[].existing_cluster_id = "prod-cluster-456" |
+    .settings.schedule.pause_status = "PAUSED"' \
+    "$TEMP_DIR/job_dev.json" > "$TEMP_DIR/job_prod.json"
+
+# Step 4: Import to production
+echo "4. Importing to production..."
+databricks --profile "$PROD_PROFILE" workspace import-dir \
+    "$TEMP_DIR/notebooks" /Production/Project
+
+# Step 5: Update production job
+echo "5. Updating production job..."
+databricks --profile "$PROD_PROFILE" jobs reset 789 \
+    --json-file "$TEMP_DIR/job_prod.json"
+
+# Cleanup
+rm -rf "$TEMP_DIR"
+
+echo "✓ Promotion completed successfully"
+echo "Note: Production job is PAUSED. Unpause when ready."
+```
+
+### 4. Cluster Auto-Scaling Analysis
+
+```bash
+#!/bin/bash
+# Analyze cluster auto-scaling patterns
+
+PROFILE="production"
+CLUSTER_ID="$1"
+DAYS=7
+
+if [ -z "$CLUSTER_ID" ]; then
+    echo "Usage: $0 <cluster-id>"
+    exit 1
+fi
+
+echo "=== Cluster Auto-Scaling Analysis ==="
+echo "Cluster ID: $CLUSTER_ID"
+echo "Analysis period: Last $DAYS days"
+
+# Get cluster events
+START_TIME=$(($(date +%s%3N) - (DAYS * 24 * 60 * 60 * 1000)))
+
+databricks --profile "$PROFILE" clusters events "$CLUSTER_ID" \
+    --start-time "$START_TIME" \
+    --output json | \
+    jq '.events[] | select(.type | contains("RESIZED")) | {
+        timestamp: (.timestamp / 1000 | strftime("%Y-%m-%d %H:%M:%S")),
+        type,
+        details: .details
+    }' > cluster_resize_events.json
+
+# Count scaling events
+SCALE_UP=$(jq '[.[] | select(.type == "UPSIZE_COMPLETED")] | length' cluster_resize_events.json)
+SCALE_DOWN=$(jq '[.[] | select(.type == "DOWNSIZE_COMPLETED")] | length' cluster_resize_events.json)
+
+echo ""
+echo "Scaling events:"
+echo "  Scale up events: $SCALE_UP"
+echo "  Scale down events: $SCALE_DOWN"
+echo ""
+echo "Recommendations:"
+
+if [ "$SCALE_UP" -gt "$SCALE_DOWN" ]; then
+    echo "  - Cluster frequently scales up. Consider increasing min_workers."
+elif [ "$SCALE_DOWN" -gt "$SCALE_UP" ]; then
+    echo "  - Cluster frequently scales down. Consider decreasing max_workers."
+else
+    echo "  - Auto-scaling configuration appears balanced."
+fi
+```
+
+---
+
+## Tips & Best Practices
+
+### 1. Use Profiles for Environment Management
+```bash
+# Set up multiple profiles in ~/.databrickscfg
+[dev]
+host = https://dev-workspace.cloud.databricks.com
+token = dapi...
+
+[staging]
+host = https://staging-workspace.cloud.databricks.com
+token = dapi...
+
+[prod]
+host = https://prod-workspace.cloud.databricks.com
+token = dapi...
+
+# Use profiles in commands
+databricks --profile dev clusters list
+databricks --profile prod jobs run-now 123
+```
+
+### 2. JSON Configuration Files for Repeatability
+```bash
+# Store configurations in version control
+git add configs/prod-cluster.json
+git add configs/etl-job.json
+
+# Apply configurations
+databricks clusters create --json-file configs/prod-cluster.json
+databricks jobs create --json-file configs/etl-job.json
+```
+
+### 3. Output Format for Automation
+```bash
+# JSON output for parsing
+databricks clusters list --output json | jq '.clusters[]'
+
+# Text output for human reading
+databricks clusters list --output text
+
+# Set default output in profile
+[DEFAULT]
+host = https://workspace.cloud.databricks.com
+token = dapi...
+output = json
+```
+
+### 4. Environment Variables
+```bash
+# Set environment variables to avoid profile flags
+export DATABRICKS_HOST="https://workspace.cloud.databricks.com"
+export DATABRICKS_TOKEN="dapi..."
+export DATABRICKS_CONFIG_PROFILE="production"
+
+# Now run commands without --profile flag
+databricks clusters list
+databricks jobs run-now 123
+```
+
+### 5. Version Control Integration
+```bash
+# Keep configurations in Git
+configs/
+  ├── clusters/
+  │   ├── prod-cluster.json
+  │   └── dev-cluster.json
+  ├── jobs/
+  │   ├── etl-job.json
+  │   └── ml-job.json
+  └── notebooks/
+      ├── ETL/
+      └── ML/
+
+# Deployment script
+#!/bin/bash
+git pull origin main
+databricks workspace import-dir ./configs/notebooks /Production
+databricks jobs reset 123 --json-file ./configs/jobs/etl-job.json
+```
+
+### 6. Testing Before Production
+```bash
+# Validate JSON configurations
+cat job-config.json | jq empty
+
+# Test in development first
+databricks --profile dev jobs create --json-file job-config.json
+
+# Validate job runs successfully
+RUN_ID=$(databricks --profile dev jobs run-now <job-id> --output json | jq -r '.run_id')
+
+# Only promote to production after successful test
+if [ "$(get_run_status $RUN_ID)" = "SUCCESS" ]; then
+    databricks --profile prod jobs create --json-file job-config.json
+fi
+```
+
+### 7. Logging & Auditing
+```bash
+# Enable debug logging
+databricks --debug clusters list
+
+# Log to file
+databricks --log-file ./databricks.log clusters list
+
+# JSON logging for parsing
+databricks --log-level info --log-format json clusters list
+```
+
+### 8. Resource Tagging
+```json
+{
+  "cluster_name": "prod-etl-cluster",
+  "custom_tags": {
+    "Environment": "production",
+    "Project": "ETL",
+    "CostCenter": "Engineering",
+    "Owner": "data-team@example.com",
+    "ManagedBy": "terraform"
   }
 }
 ```
 
-## Tips & Tricks
+---
 
-1. **Using Profiles**:
-   ```bash
-   databricks --profile prod fs ls dbfs:/
-   ```
+## Troubleshooting Guide
 
-2. **Format Output as JSON**:
-   ```bash
-   databricks clusters list --output JSON
-   ```
+### Common Issues & Solutions
 
-3. **Save Output to File**:
-   ```bash
-   databricks clusters list --output JSON > clusters.json
-   ```
+#### 1. Authentication Errors
+```bash
+# Problem: "Error: Authentication is not configured"
+# Solution: Configure authentication
+databricks configure --token
 
-4. **Use Environment Variables for Authentication**:
-   ```bash
-   export DATABRICKS_HOST=https://your-workspace.cloud.databricks.com
-   export DATABRICKS_TOKEN=your-token
-   databricks fs ls dbfs:/
-   ```
+# Or use OAuth
+databricks auth login --host https://workspace.cloud.databricks.com
 
-5. **Debug API Calls**:
-   ```bash
-   databricks --debug fs ls dbfs:/
-   ```
+# Verify configuration
+cat ~/.databrickscfg
 
-6. **Work with Job Runs**:
-   ```bash
-   # Get the 10 most recent job runs
-   databricks jobs runs list --limit 10
-   
-   # Get details about a specific run
-   databricks jobs runs get --run-id 12345
-   ```
+# Test connection
+databricks workspace list /
+```
 
-7. **Export/Import Workspace Recursively**:
-   ```bash
-   # Export entire directory
-   databricks workspace export-dir /Users/me/project ./local-backup
-   
-   # Import back
-   databricks workspace import-dir ./local-backup /Users/me/project-restored
-   ```
+#### 2. Token Expiration
+```bash
+# Problem: "Error: Invalid token"
+# Solution: Create new token via UI, then update config
+databricks configure --token
 
-# Databricks Asset Bundles Reference Card
+# Or create programmatically (if you have valid token)
+databricks tokens create --comment "New CLI token" --lifetime-seconds 7776000
+```
+
+#### 3. Permission Denied
+```bash
+# Problem: "Error: Permission denied"
+# Solution: Check your permissions
+databricks current-user me --output json
+
+# List your groups
+databricks groups list --output json | jq '.[] | select(.members[].userName == "your@email.com")'
+
+# Contact workspace admin for proper permissions
+```
+
+#### 4. Cluster Not Found
+```bash
+# Problem: "Error: Cluster <id> does not exist"
+# Solution: List all clusters to find correct ID
+databricks clusters list --output json | jq '.clusters[] | {id: .cluster_id, name: .cluster_name}'
+
+# Check if cluster was terminated
+databricks clusters list --output json | jq '.clusters[] | select(.state == "TERMINATED")'
+```
+
+#### 5. Job Run Failures
+```bash
+# Get detailed error information
+databricks jobs get-run-output <run-id>
+
+# Check job run logs
+databricks jobs get-run <run-id> --output json | jq '.state'
+
+# View cluster logs if cluster-related
+databricks clusters events <cluster-id>
+```
+
+#### 6. File Not Found (DBFS)
+```bash
+# Problem: "Error: File not found"
+# Solution: List directory contents
+databricks fs ls dbfs:/path/to/directory
+
+# Check file permissions
+databricks fs ls -l dbfs:/path/to/file
+
+# Verify correct path format (dbfs:/ prefix)
+databricks fs ls dbfs:/mnt/data/
+```
+
+#### 7. Rate Limiting
+
+
+
+
+# Databricks Asset Bundles
 
 ## Overview
 
@@ -1536,7 +3337,7 @@ dbutils.fs.refreshMounts()            # Refresh mount cache
 ```
 
 
-# Databricks Unity Catalog Complete Reference Card
+# Databricks Unity Catalog
 
 ## Overview
 
