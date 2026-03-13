@@ -10,7 +10,7 @@
 
 - [Feature Store](feature_store.md)
 
-- [Mlflow](mflow.md)
+- [Mlflow](mlflow.md)
 
 - [OpenTofu](open_tofu.md)
 
