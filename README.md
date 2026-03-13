@@ -8,4 +8,4 @@
 
 - [Jobs und Pipelines](jobs_pipelines.md)
 
-- [Feature Store] (feature_store.md)
+- [Feature Store](feature_store.md)
