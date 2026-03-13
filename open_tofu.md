@@ -21,6 +21,7 @@
 1. [Multi-Workspace / Multi-Environment Patterns](#12-multi-workspace--multi-environment-patterns)
 1. [Drift Detection & Remediation](#13-drift-detection--remediation)
 1. [Common Mistakes & Gotchas](#14-common-mistakes--gotchas)
+1. [End-to-End Deployment in Practice](#15-end-to-end-deployment-in-practice)
 
 -----
 
@@ -1067,6 +1068,593 @@ resource "databricks_grants" "revoke_all" {
   # No grant blocks = authoritative empty = all privileges removed
 }
 ```
+
+-----
+
+## 15. End-to-End Deployment in Practice
+
+This section walks through the complete lifecycle: creating and configuring a Service Principal, installing OpenTofu, authenticating against an existing Databricks workspace, and running a deployment — both locally and from a remote CI/CD pipeline.
+
+-----
+
+### 15.1 Service Principal Setup (Azure / Databricks Account)
+
+A Service Principal (SP) is the recommended non-human identity for all automated deployments. You need **two levels** of permission:
+
+|Level                         |What it controls                                        |Where it is granted                 |
+|------------------------------|--------------------------------------------------------|------------------------------------|
+|**Azure RBAC**                |Ability to read ARM resources, use MSI, access Key Vault|Azure Portal / `az` CLI             |
+|**Databricks account-level**  |Ability to manage Unity Catalog, workspaces, metastore  |Databricks Account Console          |
+|**Databricks workspace-level**|Ability to deploy resources inside a specific workspace |Workspace Admin settings or OpenTofu|
+
+#### Step 1 — Create the SP in Entra ID
+
+```bash
+# Create SP and capture credentials
+az ad sp create-for-rbac \
+  --name "sp-opentofu-databricks-prod" \
+  --role Contributor \
+  --scopes /subscriptions/<subscription-id>/resourceGroups/<rg-name> \
+  --output json
+
+# Output — save these securely:
+# {
+#   "appId":       "<client-id>",       ← ARM_CLIENT_ID
+#   "displayName": "sp-opentofu-...",
+#   "password":    "<client-secret>",   ← ARM_CLIENT_SECRET
+#   "tenant":      "<tenant-id>"        ← ARM_TENANT_ID
+# }
+```
+
+#### Step 2 — Add the SP as a Databricks account admin
+
+In the **Databricks Account Console** (`accounts.azuredatabricks.net`):
+
+1. Go to **User Management → Service Principals**
+1. Add the SP by its Entra ID `appId` (client ID)
+1. Assign the **Account Admin** role if it needs to manage metastores/catalogs, or **Workspace Admin** via workspace assignment for workspace-only operations
+
+#### Step 3 — Add the SP to the workspace
+
+```hcl
+# OpenTofu can manage this — or do it once manually in the Workspace Admin UI
+resource "databricks_service_principal" "tofu_deployer" {
+  application_id = var.sp_client_id
+  display_name   = "sp-opentofu-deployer"
+  active         = true
+}
+
+# Give the SP workspace admin rights so it can deploy everything
+resource "databricks_service_principal_role" "tofu_admin" {
+  service_principal_id = databricks_service_principal.tofu_deployer.id
+  role                 = "roles/databricks.admin"
+}
+```
+
+> **Principle of least privilege:** For deployments that only manage grants and UC objects (not workspace settings), `roles/databricks.user` + Unity Catalog `MANAGE` on relevant objects is sufficient. Reserve `admin` for initial bootstrapping only.
+
+-----
+
+### 15.2 Local Machine Setup
+
+#### Install OpenTofu
+
+```bash
+# macOS (Homebrew)
+brew install opentofu
+
+# Linux — official install script
+curl --proto '=https' --tlsv1.2 -fsSL https://get.opentofu.org/install-opentofu.sh | sh
+
+# Windows (winget)
+winget install OpenTofu.OpenTofu
+
+# Verify
+tofu version
+# OpenTofu v1.9.x
+```
+
+#### Install Azure CLI (needed for `az login` / MSI auth)
+
+```bash
+# macOS
+brew install azure-cli
+
+# Linux
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+# Verify
+az version
+```
+
+#### Authenticate locally — two approaches
+
+**Option A: Client secret via environment variables (simplest)**
+
+```bash
+# Set in your shell profile (.zshrc / .bashrc) or a .env file (never commit .env)
+export ARM_CLIENT_ID="<appId>"
+export ARM_CLIENT_SECRET="<password>"
+export ARM_TENANT_ID="<tenant>"
+export ARM_SUBSCRIPTION_ID="<subscription-id>"
+
+# Databricks-specific (used by provider when azure_use_msi = false)
+export DATABRICKS_HOST="https://adb-<id>.18.azuredatabricks.net"
+export DATABRICKS_AZURE_CLIENT_ID="$ARM_CLIENT_ID"
+export DATABRICKS_AZURE_CLIENT_SECRET="$ARM_CLIENT_SECRET"
+export DATABRICKS_AZURE_TENANT_ID="$ARM_TENANT_ID"
+```
+
+**Option B: Azure CLI interactive login (developer convenience)**
+
+```bash
+# Log in as yourself interactively — OpenTofu picks this up automatically
+az login
+az account set --subscription "<subscription-id>"
+
+# Provider block uses az CLI token automatically when no explicit auth is set
+# Useful for read-only plan runs during development
+```
+
+#### Provider block for local development
+
+```hcl
+# providers.tf
+provider "databricks" {
+  host = var.databricks_host
+
+  # Explicit SP auth — reads from env vars if variables not set
+  azure_client_id       = var.azure_client_id       # or env DATABRICKS_AZURE_CLIENT_ID
+  azure_client_secret   = var.azure_client_secret   # or env DATABRICKS_AZURE_CLIENT_SECRET
+  azure_tenant_id       = var.azure_tenant_id       # or env DATABRICKS_AZURE_TENANT_ID
+}
+```
+
+#### Local variable management with `terraform.tfvars`
+
+```hcl
+# terraform.tfvars  ← add to .gitignore, NEVER commit
+databricks_host       = "https://adb-<id>.18.azuredatabricks.net"
+azure_client_id       = "<appId>"
+azure_client_secret   = "<client-secret>"
+azure_tenant_id       = "<tenant-id>"
+databricks_account_id = "<account-id>"
+```
+
+```bash
+# .gitignore
+*.tfvars
+*.tfvars.json
+.terraform/
+.terraform.lock.hcl   # commit this one — it pins provider checksums
+terraform.tfstate
+terraform.tfstate.backup
+*.tfplan
+.env
+```
+
+#### First-time local deployment workflow
+
+```bash
+# 1. Clone your repo and navigate to the environment directory
+cd environments/dev
+
+# 2. Initialise — downloads provider, configures backend
+tofu init
+
+# 3. Validate syntax and schema
+tofu validate
+
+# 4. Preview what will be created/changed/destroyed
+tofu plan -out=dev.tfplan
+
+# 5. Review the plan output carefully, then apply
+tofu apply dev.tfplan
+
+# 6. Confirm state is clean
+tofu plan   # should report "No changes"
+```
+
+-----
+
+### 15.3 Remote CI/CD Pipeline Setup
+
+#### Authentication in CI — Managed Identity (recommended for Azure pipelines)
+
+When running inside Azure (Azure DevOps, GitHub Actions with Azure-hosted runners, or ACI), use a **Managed Identity** instead of a client secret — no credentials to rotate or leak.
+
+```hcl
+# Provider block for CI with MSI
+provider "databricks" {
+  host          = var.databricks_host
+  azure_use_msi = true                      # uses VM/runner managed identity automatically
+  # azure_msi_endpoint — only needed for custom MSI endpoints
+}
+
+provider "azurerm" {
+  use_msi = true
+  features {}
+}
+```
+
+Assign the managed identity of the runner the same Entra ID / Databricks permissions as the SP described in §15.1.
+
+#### GitHub Actions — full deployment pipeline
+
+```yaml
+# .github/workflows/deploy.yml
+name: OpenTofu Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  id-token: write      # Required for OIDC / Workload Identity Federation
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: "1.9.0"
+  ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID:        ${{ secrets.ARM_TENANT_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+
+    steps:
+      # ── Auth ──────────────────────────────────────────────
+      - name: Azure Login (OIDC — no stored secret)
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
+      # ── OpenTofu ──────────────────────────────────────────
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ env.TF_VERSION }}
+
+      - uses: actions/checkout@v4
+
+      - name: Tofu Init
+        run: tofu init -input=false
+        working-directory: environments/${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+        env:
+          ARM_CLIENT_ID:     ${{ secrets.AZURE_CLIENT_ID }}
+          # Backend uses OIDC — no ARM_CLIENT_SECRET needed
+
+      - name: Tofu Validate
+        run: tofu validate
+
+      - name: Tofu Plan
+        id: plan
+        run: tofu plan -input=false -out=pipeline.tfplan -no-color 2>&1 | tee plan.txt
+        env:
+          DATABRICKS_HOST:                  ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_AZURE_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+          DATABRICKS_AZURE_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
+          ARM_CLIENT_ID:                    ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_USE_OIDC:                     "true"
+
+      - name: Post Plan to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const plan = require('fs').readFileSync('plan.txt', 'utf8').slice(0, 65000);
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### OpenTofu Plan\n\`\`\`\n${plan}\n\`\`\``
+            });
+
+      - name: Tofu Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: tofu apply -input=false pipeline.tfplan
+        env:
+          DATABRICKS_HOST:                  ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_AZURE_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+          DATABRICKS_AZURE_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
+          ARM_CLIENT_ID:                    ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_USE_OIDC:                     "true"
+```
+
+#### Azure DevOps pipeline
+
+```yaml
+# azure-pipelines.yml
+trigger:
+  branches:
+    include: [main]
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: databricks-secrets          # Variable Group in Azure DevOps Library
+  - name: TF_ROOT
+    value: environments/$(Build.SourceBranchName)
+
+stages:
+  - stage: Plan
+    jobs:
+      - job: TofuPlan
+        steps:
+          - task: AzureCLI@2
+            displayName: Azure Login
+            inputs:
+              azureSubscription: sc-opentofu-prod    # Service Connection
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: echo "Authenticated via Service Connection"
+
+          - script: |
+              curl -fsSL https://get.opentofu.org/install-opentofu.sh | sh
+              tofu version
+            displayName: Install OpenTofu
+
+          - script: tofu init -input=false
+            displayName: Tofu Init
+            workingDirectory: $(TF_ROOT)
+            env:
+              ARM_CLIENT_ID:     $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+              ARM_TENANT_ID:     $(ARM_TENANT_ID)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+
+          - script: tofu plan -input=false -out=pipeline.tfplan
+            displayName: Tofu Plan
+            workingDirectory: $(TF_ROOT)
+            env:
+              DATABRICKS_HOST:              $(DATABRICKS_HOST)
+              DATABRICKS_AZURE_CLIENT_ID:   $(ARM_CLIENT_ID)
+              DATABRICKS_AZURE_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+              DATABRICKS_AZURE_TENANT_ID:   $(ARM_TENANT_ID)
+
+          - publish: $(TF_ROOT)/pipeline.tfplan
+            artifact: tfplan
+
+  - stage: Apply
+    dependsOn: Plan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: TofuApply
+        environment: production              # requires manual approval gate in ADO
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: tfplan
+
+                - script: tofu apply -input=false pipeline.tfplan
+                  displayName: Tofu Apply
+                  workingDirectory: $(TF_ROOT)
+                  env:
+                    DATABRICKS_HOST:              $(DATABRICKS_HOST)
+                    DATABRICKS_AZURE_CLIENT_ID:   $(ARM_CLIENT_ID)
+                    DATABRICKS_AZURE_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+                    DATABRICKS_AZURE_TENANT_ID:   $(ARM_TENANT_ID)
+```
+
+-----
+
+### 15.4 Secrets Management — Best Practices
+
+Never store credentials in `.tf` files or pipeline YAML. Use one of these approaches:
+
+#### Azure Key Vault as secrets backend
+
+```hcl
+# Read secrets at plan/apply time — nothing stored in .tf
+data "azurerm_key_vault" "tofu_kv" {
+  name                = "kv-opentofu-prod"
+  resource_group_name = "rg-platform"
+}
+
+data "azurerm_key_vault_secret" "sp_secret" {
+  name         = "sp-opentofu-client-secret"
+  key_vault_id = data.azurerm_key_vault.tofu_kv.id
+}
+
+provider "databricks" {
+  host                  = var.databricks_host
+  azure_client_id       = var.azure_client_id
+  azure_client_secret   = data.azurerm_key_vault_secret.sp_secret.value
+  azure_tenant_id       = var.azure_tenant_id
+}
+```
+
+#### Environment variable precedence (provider resolution order)
+
+The Databricks provider resolves authentication in this order — first match wins:
+
+```
+1. Explicit attributes in provider block
+2. Environment variables (DATABRICKS_*)
+3. ~/.databrickscfg profile
+4. Azure Managed Identity (if azure_use_msi = true)
+5. Azure CLI token (az login)
+```
+
+```bash
+# Full set of Databricks provider env vars
+DATABRICKS_HOST                       # workspace URL
+DATABRICKS_TOKEN                      # PAT (avoid in prod — use SP)
+DATABRICKS_AZURE_CLIENT_ID            # SP appId
+DATABRICKS_AZURE_CLIENT_SECRET        # SP secret
+DATABRICKS_AZURE_TENANT_ID            # Entra tenant
+DATABRICKS_AZURE_SUBSCRIPTION_ID      # Azure subscription
+DATABRICKS_ACCOUNT_ID                 # for account-level provider
+```
+
+#### GitHub Actions secrets checklist
+
+```
+Repository / Environment Secrets:
+  ARM_SUBSCRIPTION_ID        ← Azure subscription
+  ARM_TENANT_ID              ← Entra tenant ID
+  AZURE_CLIENT_ID            ← SP appId (used with OIDC — no secret needed)
+  DATABRICKS_HOST            ← workspace URL per environment
+  DATABRICKS_ACCOUNT_ID      ← Databricks account ID
+
+For client-secret auth (non-OIDC):
+  AZURE_CLIENT_SECRET        ← SP secret — rotate every 90 days
+```
+
+-----
+
+### 15.5 State File Security
+
+The state file contains sensitive data (resource IDs, some attribute values). Protect it:
+
+```hcl
+# Remote state with encryption at rest and access control
+terraform {
+  backend "azurerm" {
+    resource_group_name  = "rg-tfstate"
+    storage_account_name = "satfstate<env>"
+    container_name       = "tofu-state"
+    key                  = "databricks/<env>.tfstate"
+    use_azuread_auth     = true      # no storage key in config
+    # State blob is encrypted with Azure Storage SSE by default
+    # Enable customer-managed key (CMK) in the storage account for higher compliance
+  }
+}
+```
+
+```bash
+# Lock storage account: only the SP and platform admins should have access
+az role assignment create \
+  --assignee <sp-object-id> \
+  --role "Storage Blob Data Contributor" \
+  --scope /subscriptions/<sub>/resourceGroups/rg-tfstate/providers/Microsoft.Storage/storageAccounts/satfstate
+```
+
+-----
+
+### 15.6 Bootstrapping Order for a New Workspace
+
+When a workspace exists but OpenTofu has never been run, follow this sequence to avoid dependency errors:
+
+```
+Phase 1 — Account-level (provider = databricks.accounts)
+  ├── databricks_service_principal  (the deployer SP itself)
+  ├── databricks_metastore          (if not already exists)
+  ├── databricks_metastore_assignment
+  └── Account-level group creation (SCIM groups)
+
+Phase 2 — Storage & credentials
+  ├── databricks_storage_credential
+  └── databricks_external_location
+
+Phase 3 — Catalog structure
+  ├── databricks_catalog
+  └── databricks_schema (per layer)
+
+Phase 4 — Identity (workspace-level groups & members)
+  ├── databricks_group
+  ├── databricks_group_member
+  └── databricks_service_principal_role
+
+Phase 5 — Grants (depends on all above)
+  ├── databricks_grants (metastore)
+  ├── databricks_grants (catalogs)
+  ├── databricks_grants (schemas)
+  └── databricks_grants (tables / volumes / models)
+
+Phase 6 — Compute permissions
+  ├── databricks_permissions (clusters, SQL WH)
+  └── databricks_permissions (jobs, pipelines)
+```
+
+Use `-target` to apply phases explicitly during initial bootstrap:
+
+```bash
+# Phase 1
+tofu apply -target=databricks_metastore_assignment.this
+
+# Phase 2
+tofu apply -target=databricks_storage_credential.adls \
+           -target=databricks_external_location.datalake
+
+# Phase 3+
+tofu apply   # full apply once foundations are in place
+```
+
+-----
+
+### 15.7 Day-2 Operations — Ongoing Deployment Workflow
+
+```
+Developer workflow (feature branch):
+  1. git checkout -b feat/add-analyst-group
+  2. Edit .tf files
+  3. tofu fmt && tofu validate
+  4. tofu plan                          ← review locally
+  5. git push → PR opens
+  6. CI runs tofu plan → posts output to PR
+  7. Peer review of plan output (not just code)
+  8. Merge to main → CI runs tofu apply automatically
+
+Hotfix / emergency (break-glass):
+  1. tofu apply -target=databricks_grants.affected_object
+  2. Immediately raise a PR to capture the change in code
+  3. Confirm CI plan shows "No changes" after merge
+```
+
+#### Makefile for local convenience
+
+```makefile
+# Makefile
+ENV ?= dev
+ROOT = environments/$(ENV)
+
+init:
+	cd $(ROOT) && tofu init -upgrade
+
+fmt:
+	tofu fmt -recursive
+
+validate: fmt
+	cd $(ROOT) && tofu validate
+
+plan: validate
+	cd $(ROOT) && tofu plan -out=$(ENV).tfplan
+
+apply:
+	cd $(ROOT) && tofu apply $(ENV).tfplan
+
+destroy-dry:
+	cd $(ROOT) && tofu plan -destroy
+
+# Usage:
+# make plan ENV=prod
+# make apply ENV=prod
+```
+
+-----
+
+### 15.8 Authentication Decision Matrix
+
+|Scenario                        |Recommended auth method                  |Why                                         |
+|--------------------------------|-----------------------------------------|--------------------------------------------|
+|Local dev, interactive          |`az login` (Azure CLI)                   |No secrets to manage; uses your own identity|
+|Local dev, SP testing           |Client secret via env vars               |Quick to set up; never hardcode in `.tf`    |
+|GitHub Actions                  |OIDC / Workload Identity Federation      |No stored secrets; short-lived tokens       |
+|Azure DevOps                    |Service Connection (SP or MSI)           |Native ADO secret management                |
+|Azure-hosted runner / ACI       |Managed Identity (`azure_use_msi = true`)|Zero credential management                  |
+|Self-hosted runner in Azure VM  |Managed Identity on the VM               |Same as above                               |
+|Self-hosted runner outside Azure|Client secret via pipeline secret store  |Rotate every 90 days; use Key Vault         |
+|Databricks PAT                  |**Avoid in automation**                  |Non-auditable, no expiry enforcement        |
 
 -----
 
