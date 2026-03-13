@@ -1,7 +1,7 @@
 # Databricks Jobs, Workflows & Orchestration — Reference Card
 
-> **Covers:** Databricks Jobs · Workflows · Delta Live Tables (Declarative Pipelines) · AutoLoader · Structured Streaming · Ingestion · Orchestration Patterns · Best Practices
-> **Runtime:** Databricks Runtime 14.x+ / Unity Catalog compatible
+> **Covers:** Databricks Jobs · Workflows · Lakeflow Spark Declarative Pipelines (SDP / formerly DLT) · AutoLoader · Structured Streaming · Ingestion · Orchestration Patterns · Best Practices
+> **Runtime:** Databricks Runtime 14.x+ / Unity Catalog compatible · **Updated:** Lakeflow GA (2025/2026)
 
 -----
 
@@ -9,15 +9,16 @@
 
 1. [Databricks Jobs](#1-databricks-jobs)
 1. [Workflows (Multi-Task Jobs)](#2-workflows-multi-task-jobs)
-1. [Delta Live Tables — Declarative Pipelines](#3-delta-live-tables--declarative-pipelines)
-1. [AutoLoader (cloudFiles)](#4-autoloader-cloudfiles)
-1. [Structured Streaming](#5-structured-streaming)
-1. [Ingestion Patterns](#6-ingestion-patterns)
-1. [Workflow Orchestration Design Patterns](#7-workflow-orchestration-design-patterns)
-1. [Job & Task Configuration Reference](#8-job--task-configuration-reference)
-1. [Method & API Reference Tables](#9-method--api-reference-tables)
-1. [Best Practices](#10-best-practices)
-1. [Quick Examples](#11-quick-examples)
+1. [Delta Live Tables — Declarative Pipelines (Legacy `dlt` API)](#3-delta-live-tables--declarative-pipelines-legacy-dlt-api)
+1. [Lakeflow Spark Declarative Pipelines (SDP — `dp` API)](#4-lakeflow-spark-declarative-pipelines-sdp--dp-api)
+1. [AutoLoader (cloudFiles)](#5-autoloader-cloudfiles)
+1. [Structured Streaming](#6-structured-streaming)
+1. [Ingestion Patterns](#7-ingestion-patterns)
+1. [Workflow Orchestration Design Patterns](#8-workflow-orchestration-design-patterns)
+1. [Job & Task Configuration Reference](#9-job--task-configuration-reference)
+1. [Method & API Reference Tables](#10-method--api-reference-tables)
+1. [Best Practices](#11-best-practices)
+1. [Quick Examples](#12-quick-examples)
 
 -----
 
@@ -180,7 +181,9 @@ dbutils.widgets.dropdown("mode", "full", ["full", "incremental"])
 
 -----
 
-## 3. Delta Live Tables — Declarative Pipelines
+## 3. Delta Live Tables — Declarative Pipelines (Legacy `dlt` API)
+
+> **Note:** DLT is now **Lakeflow Spark Declarative Pipelines (SDP)**. The `dlt` module still works with full backward compatibility, but Databricks recommends migrating to the new `pyspark.pipelines` (`dp`) API. See [Section 4](#4-lakeflow-spark-declarative-pipelines-sdp--dp-api) for the current API.
 
 ### Core Concepts
 
@@ -327,7 +330,435 @@ dlt.apply_changes(
 
 -----
 
-## 4. AutoLoader (`cloudFiles`)
+## 4. Lakeflow Spark Declarative Pipelines (SDP — `dp` API)
+
+> **What is SDP?** Lakeflow Spark Declarative Pipelines (SDP) is the evolution of Delta Live Tables, now built on open-source **Apache Spark Declarative Pipelines** (Spark 4.1+). It is Generally Available as of 2025. The core Python API moved from `import dlt` → `from pyspark import pipelines as dp`. All existing DLT code continues to work without changes.
+
+### Lakeflow vs DLT vs Apache Spark — Name Mapping
+
+|Concept                |Old DLT syntax                        |New SDP syntax (`dp`)                       |In Apache Spark OSS|
+|-----------------------|--------------------------------------|--------------------------------------------|-------------------|
+|Import                 |`import dlt`                          |`from pyspark import pipelines as dp`       |✅ Same             |
+|Streaming Table        |`@dlt.table` + `readStream`           |`@dp.table()`                               |✅                  |
+|Materialized View      |`@dlt.table` + `read`                 |`@dp.materialized_view()`                   |✅                  |
+|Temporary View         |`@dlt.view`                           |`@dp.temporary_view()`                      |✅                  |
+|Append Flow            |`@dlt.append_flow`                    |`@dp.append_flow()`                         |✅                  |
+|CDC / AUTO CDC         |`dlt.apply_changes(...)`              |`dp.create_auto_cdc_flow(...)`              |❌ Databricks only  |
+|Snapshot CDC           |`dlt.apply_changes_from_snapshot(...)`|`dp.create_auto_cdc_from_snapshot_flow(...)`|❌ Databricks only  |
+|Expectations           |`@dlt.expect(...)`                    |`@dp.expect(...)`                           |❌ Databricks only  |
+|Sink                   |`dlt.create_sink(...)`                |`dp.create_sink(...)`                       |✅                  |
+|Event log              |`spark.read.table("event_log")`       |`spark.read.table("event_log")`             |❌ Databricks only  |
+|SQL — Streaming Table  |`CREATE OR REFRESH STREAMING TABLE`   |`CREATE STREAMING TABLE`                    |✅                  |
+|SQL — Materialized View|`CREATE OR REFRESH MATERIALIZED VIEW` |`CREATE MATERIALIZED VIEW`                  |✅                  |
+|SQL — Flow             |*(not supported)*                     |`CREATE FLOW ... INSERT INTO`               |✅                  |
+|Reference dataset      |`dlt.read("table")`                   |`spark.read.table("table")` (in-pipeline)   |✅                  |
+
+
+> **Key rule:** `@dp.table()` = streaming table (uses `readStream`). `@dp.materialized_view()` = batch table (uses `read`). The read type determines the dataset type — not a separate config.
+
+-----
+
+### `dp` Decorator Reference
+
+#### `@dp.table()` — Streaming Table
+
+```python
+from pyspark import pipelines as dp
+from pyspark.sql.functions import col, current_timestamp, to_date
+
+@dp.table(
+    name="bronze_events",            # optional: defaults to function name
+    comment="Raw events from S3",
+    partition_cols=["event_date"],   # optional partition columns
+    table_properties={               # optional Delta/pipeline properties
+        "pipelines.reset.allowed": "true",
+        "quality": "bronze"
+    },
+    path="s3://bucket/tables/bronze_events",  # optional external location
+    schema="event_id STRING, user_id STRING, event_ts TIMESTAMP"  # optional explicit schema
+)
+def bronze_events():
+    return (
+        spark.readStream                    # readStream → Streaming Table
+            .format("cloudFiles")
+            .option("cloudFiles.format", "json")
+            .option("cloudFiles.schemaLocation", "/dlt/schema/events")
+            .load("s3://bucket/landing/events/")
+            .withColumn("event_date", to_date(col("event_ts")))
+            .withColumn("_ingest_ts", current_timestamp())
+    )
+```
+
+#### `@dp.materialized_view()` — Materialized View
+
+```python
+@dp.materialized_view(
+    name="gold_daily_counts",        # optional: defaults to function name
+    comment="Daily event counts",
+    partition_cols=["event_date"],
+    table_properties={"quality": "gold"}
+)
+def gold_daily_counts():
+    return (
+        spark.read.table("silver_events")  # spark.read (not readStream) → Materialized View
+             .groupBy("event_date", "event_type")
+             .count()
+    )
+```
+
+#### `@dp.temporary_view()` — Temporary View
+
+```python
+# Visible only within the pipeline; not persisted to Unity Catalog
+@dp.temporary_view(name="cleaned_events")
+def cleaned_events():
+    return (
+        spark.readStream.table("bronze_events")
+             .filter(col("event_type").isNotNull())
+    )
+```
+
+#### `@dp.append_flow()` — Explicit Append Flow
+
+```python
+# Use when multiple sources feed into a single target streaming table
+# First: declare the target table (no flow defined inline)
+@dp.table(name="all_events")
+def all_events():
+    return spark.readStream.table("events_us")  # default/primary flow
+
+# Then: add additional flows into the same target
+@dp.append_flow(target="all_events", name="flow_eu_events")
+def append_eu_events():
+    return spark.readStream.table("events_eu")
+
+@dp.append_flow(target="all_events", name="flow_apac_events")
+def append_apac_events():
+    return spark.readStream.table("events_apac")
+```
+
+-----
+
+### Data Quality Expectations (`dp`)
+
+```python
+# Warn — record retained, metric tracked in pipeline event log
+@dp.expect("valid_event_type", "event_type IS NOT NULL")
+@dp.table()
+def silver_events():
+    return spark.readStream.table("bronze_events")
+
+# Drop — violating records silently dropped
+@dp.expect_or_drop("valid_user", "user_id IS NOT NULL")
+@dp.table()
+def silver_events_clean():
+    return spark.readStream.table("bronze_events")
+
+# Fail — pipeline fails on any violation
+@dp.expect_or_fail("critical_schema", "event_id IS NOT NULL")
+@dp.table()
+def bronze_events_validated():
+    return spark.readStream.table("raw_events")
+
+# Multiple expectations (dict)
+@dp.expect_all({
+    "valid_date":   "event_date >= '2020-01-01'",
+    "valid_type":   "event_type IN ('click','view','purchase')"
+})
+@dp.table()
+def validated_events():
+    return spark.readStream.table("bronze_events")
+
+@dp.expect_all_or_drop({
+    "non_null_id": "user_id IS NOT NULL",
+    "positive_amt": "amount > 0"
+})
+@dp.table()
+def clean_transactions():
+    return spark.readStream.table("bronze_transactions")
+```
+
+-----
+
+### AUTO CDC — Change Data Capture (`dp`)
+
+```python
+# AUTO CDC replaces dlt.apply_changes()
+# Step 1: Declare the target streaming table
+@dp.table(name="silver_customers")
+def silver_customers():
+    pass  # target declared; AUTO CDC flow writes into it
+
+# Step 2: Define the CDC flow
+dp.create_auto_cdc_flow(
+    target="silver_customers",
+    source="bronze_cdc_feed",
+    keys=["customer_id"],
+    sequence_by="_commit_timestamp",       # ordering column
+    apply_as_deletes="op = 'DELETE'",      # expression for delete rows
+    apply_as_truncates="op = 'TRUNCATE'",  # expression for truncate
+    except_column_list=["op", "_commit_timestamp"],
+    stored_as_scd_type=1                   # 1 (upsert) or 2 (history)
+)
+
+# SCD Type 2 — keeps full history with __START_AT / __END_AT columns
+dp.create_auto_cdc_flow(
+    target="silver_customers_history",
+    source="bronze_cdc_feed",
+    keys=["customer_id"],
+    sequence_by="_commit_timestamp",
+    stored_as_scd_type=2,
+    track_history_except_column_list=["_metadata"]
+)
+
+# Multiple CDC flows into one target (2025.30+)
+dp.create_auto_cdc_flow(
+    name="main_feed_cdc",               # named flow — allows multiples per target
+    target="silver_customers",
+    source="bronze_main_feed",
+    keys=["customer_id"],
+    sequence_by="_ts"
+)
+dp.create_auto_cdc_flow(
+    name="correction_feed_cdc",
+    target="silver_customers",          # same target — new in 2025.30
+    source="bronze_corrections_feed",
+    keys=["customer_id"],
+    sequence_by="_ts"
+)
+```
+
+### AUTO CDC from Snapshot
+
+```python
+# For sources that deliver full snapshots (not CDC deltas)
+@dp.table(name="silver_products")
+def silver_products():
+    pass
+
+dp.create_auto_cdc_from_snapshot_flow(
+    target="silver_products",
+    source="bronze_product_snapshot",
+    keys=["product_id"],
+    stored_as_scd_type=2
+)
+```
+
+-----
+
+### Sinks — Writing to External Systems
+
+```python
+# Write stream to Kafka (not a Unity Catalog table)
+dp.create_sink(
+    name="kafka_orders_sink",
+    format="kafka",
+    options={
+        "kafka.bootstrap.servers": "broker:9092",
+        "topic": "silver-orders"
+    }
+)
+
+@dp.append_flow(target="kafka_orders_sink")
+def write_orders_to_kafka():
+    return (
+        spark.readStream.table("silver_orders")
+             .select(col("order_id").cast("string").alias("key"),
+                     to_json(struct("*")).alias("value"))
+    )
+
+# Delta sink (external Delta table not managed by the pipeline)
+dp.create_sink(
+    name="external_delta_sink",
+    format="delta",
+    options={"path": "s3://external/delta/orders"}
+)
+```
+
+-----
+
+### SDP SQL Syntax
+
+```sql
+-- Streaming Table (ingestion from AutoLoader)
+CREATE STREAMING TABLE bronze_orders
+COMMENT "Raw orders from landing zone"
+TBLPROPERTIES ('quality' = 'bronze', 'pipelines.reset.allowed' = 'true')
+AS SELECT *, current_timestamp() AS _ingest_ts
+FROM STREAM(cloud_files(
+    "s3://bucket/orders/",
+    "json",
+    map("cloudFiles.inferColumnTypes", "true")
+));
+
+-- Streaming Table (from another pipeline table)
+CREATE STREAMING TABLE silver_customers
+AS SELECT customer_id, name, email
+FROM STREAM(bronze_customers)
+WHERE customer_id IS NOT NULL;
+
+-- Materialized View
+CREATE MATERIALIZED VIEW gold_order_summary
+COMMENT "Aggregated order metrics"
+TBLPROPERTIES ('quality' = 'gold')
+AS SELECT
+    order_date,
+    COUNT(*)        AS total_orders,
+    SUM(amount)     AS total_revenue
+FROM silver_orders
+GROUP BY order_date;
+
+-- Explicit Append Flow (multi-source fan-in)
+CREATE STREAMING TABLE all_events;
+
+CREATE FLOW us_events_flow
+INSERT INTO all_events
+AS SELECT * FROM STREAM(events_us);
+
+CREATE FLOW eu_events_flow
+INSERT INTO all_events
+AS SELECT * FROM STREAM(events_eu);
+
+-- One-time backfill flow
+CREATE FLOW backfill_historical
+INSERT INTO all_events ONCE
+AS SELECT * FROM historical_events_archive;
+
+-- AUTO CDC (SCD Type 1)
+CREATE STREAMING TABLE silver_customers;
+APPLY CHANGES INTO silver_customers
+FROM STREAM(bronze_cdc)
+KEYS (customer_id)
+SEQUENCE BY _commit_timestamp
+DELETE WHEN op = 'DELETE';
+
+-- AUTO CDC (SCD Type 2)
+CREATE STREAMING TABLE silver_customers_history;
+APPLY CHANGES INTO silver_customers_history
+FROM STREAM(bronze_cdc)
+KEYS (customer_id)
+SEQUENCE BY _commit_timestamp
+STORED AS SCD TYPE 2;
+```
+
+-----
+
+### `dp` API Reference Table
+
+|Function / Decorator                     |Signature                                                                                                                                                  |Notes                                                            |
+|-----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------|
+|`@dp.table()`                            |`(name, comment, partition_cols, table_properties, path, schema, temporary)`                                                                               |Creates a Streaming Table; function must return `readStream` DF  |
+|`@dp.materialized_view()`                |`(name, comment, partition_cols, table_properties, path, schema)`                                                                                          |Creates a Materialized View; function must return batch `read` DF|
+|`@dp.temporary_view()`                   |`(name, comment)`                                                                                                                                          |Temporary/logical view; not published to UC                      |
+|`@dp.append_flow()`                      |`(target, name, comment, spark_conf, libraries)`                                                                                                           |Explicit append flow; for multi-source fan-in                    |
+|`@dp.expect()`                           |`(name, constraint)`                                                                                                                                       |Warn on violation; record retained                               |
+|`@dp.expect_or_drop()`                   |`(name, constraint)`                                                                                                                                       |Drop violating records                                           |
+|`@dp.expect_or_fail()`                   |`(name, constraint)`                                                                                                                                       |Fail pipeline on violation                                       |
+|`@dp.expect_all()`                       |`({name: constraint, ...})`                                                                                                                                |Multiple warn expectations                                       |
+|`@dp.expect_all_or_drop()`               |`({name: constraint, ...})`                                                                                                                                |Multiple drop expectations                                       |
+|`@dp.expect_all_or_fail()`               |`({name: constraint, ...})`                                                                                                                                |Multiple fail expectations                                       |
+|`dp.create_auto_cdc_flow()`              |`(target, source, keys, sequence_by, apply_as_deletes, apply_as_truncates, except_column_list, stored_as_scd_type, track_history_except_column_list, name)`|CDC flow; Databricks only                                        |
+|`dp.create_auto_cdc_from_snapshot_flow()`|`(target, source, keys, stored_as_scd_type)`                                                                                                               |Snapshot CDC; Databricks only                                    |
+|`dp.create_sink()`                       |`(name, format, options)`                                                                                                                                  |External streaming sink (Kafka, Delta)                           |
+|`dp.create_streaming_table()`            |`(name, comment, schema, partition_cols, path, table_properties, expect_all, expect_all_or_drop, expect_all_or_fail)`                                      |Programmatic table declaration                                   |
+
+-----
+
+### SDP ETL Pipeline — Full Bronze → Silver → Gold Example
+
+```python
+from pyspark import pipelines as dp
+from pyspark.sql.functions import col, current_timestamp, to_date, count, sum as _sum
+
+# ── BRONZE: raw AutoLoader ingest ───────────────────────────────────────────
+@dp.table(
+    name="bronze_orders",
+    comment="Raw orders — AutoLoader JSON ingest",
+    table_properties={"quality": "bronze", "pipelines.reset.allowed": "true"},
+    partition_cols=["order_date"]
+)
+def bronze_orders():
+    return (
+        spark.readStream
+            .format("cloudFiles")
+            .option("cloudFiles.format", "json")
+            .option("cloudFiles.schemaLocation", "/dlt/schema/orders")
+            .option("cloudFiles.inferColumnTypes", "true")
+            .option("cloudFiles.schemaEvolutionMode", "rescue")
+            .load("s3://data-lake/landing/orders/")
+            .withColumn("order_date", to_date(col("order_ts")))
+            .withColumn("_ingest_ts", current_timestamp())
+            .withColumn("_source_file", col("_metadata.file_path"))
+    )
+
+# ── SILVER: clean + validate + deduplicate ──────────────────────────────────
+@dp.expect_or_drop("valid_order_id", "order_id IS NOT NULL")
+@dp.expect_or_drop("valid_customer",  "customer_id IS NOT NULL")
+@dp.expect("positive_amount",         "amount > 0")
+@dp.table(
+    name="silver_orders",
+    comment="Cleaned and validated orders",
+    partition_cols=["order_date"],
+    table_properties={"quality": "silver"}
+)
+def silver_orders():
+    return (
+        spark.readStream.table("bronze_orders")
+             .dropDuplicates(["order_id"])
+             .select(
+                 "order_id", "customer_id",
+                 col("amount").cast("double"),
+                 col("order_ts").cast("timestamp"),
+                 "order_date", "status",
+                 "_ingest_ts"
+             )
+    )
+
+# ── GOLD: aggregated business metrics ──────────────────────────────────────
+@dp.materialized_view(
+    name="gold_daily_revenue",
+    comment="Daily revenue and order counts",
+    table_properties={"quality": "gold"}
+)
+def gold_daily_revenue():
+    return (
+        spark.read.table("silver_orders")       # batch read → Materialized View
+             .filter(col("status") == "COMPLETED")
+             .groupBy("order_date")
+             .agg(
+                 count("order_id").alias("order_count"),
+                 _sum("amount").alias("total_revenue")
+             )
+    )
+```
+
+-----
+
+### SDP Pipeline Configuration Modes
+
+|Mode                      |Description                                    |Use Case                          |
+|--------------------------|-----------------------------------------------|----------------------------------|
+|**Triggered**             |Processes all new data once, then stops        |Scheduled batch ETL, job-triggered|
+|**Continuous**            |Runs indefinitely, low latency                 |Near-real-time streaming          |
+|**Serverless Standard**   |Serverless triggered; 26% better TCO vs classic|Most production workloads         |
+|**Serverless Performance**|Serverless triggered; optimized for tight SLAs |Latency-sensitive workloads       |
+|**Enhanced Autoscaling**  |Auto-scales workers during triggered runs      |Variable/bursty data volumes      |
+
+### Key SDP Differences vs Manual Spark/Streaming
+
+|                      |Manual Spark + Streaming |Lakeflow SDP                        |
+|----------------------|-------------------------|------------------------------------|
+|Retry logic           |Manual try/catch         |Auto: task → flow → pipeline        |
+|Ordering / parallelism|Manual DAG               |Automatic from dependency graph     |
+|CDC / MERGE           |Custom foreachBatch MERGE|`create_auto_cdc_flow`              |
+|Data quality          |Custom assertions        |`@dp.expect*` with event log        |
+|Incremental MV        |Manual watermarks        |Built-in incremental engine         |
+|Checkpoint mgmt       |Manual, per-stream       |Managed by pipeline                 |
+|Schema evolution      |Manual schema hints      |Automatic with `schemaEvolutionMode`|
+
+-----
+
+## 5. AutoLoader (`cloudFiles`)
 
 ### Basic AutoLoader Read
 
@@ -417,7 +848,7 @@ df = df.withColumn("source_file", col("_metadata.file_path")) \
 
 -----
 
-## 5. Structured Streaming
+## 6. Structured Streaming
 
 ### Core Stream Operations
 
@@ -544,7 +975,7 @@ query.awaitTermination(timeout=300)  # 5 min timeout
 
 -----
 
-## 6. Ingestion Patterns
+## 7. Ingestion Patterns
 
 ### Medallion Architecture
 
@@ -663,7 +1094,7 @@ def silver_orders():
 
 -----
 
-## 7. Workflow Orchestration Design Patterns
+## 8. Workflow Orchestration Design Patterns
 
 ### Pattern 1: Fan-Out / Fan-In
 
@@ -775,7 +1206,7 @@ trigger:
 
 -----
 
-## 8. Job & Task Configuration Reference
+## 9. Job & Task Configuration Reference
 
 ### Job Parameters & Dynamic Values
 
@@ -854,7 +1285,7 @@ trigger:
 
 -----
 
-## 9. Method & API Reference Tables
+## 10. Method & API Reference Tables
 
 ### Jobs REST API 2.1
 
@@ -980,7 +1411,7 @@ trigger:
 
 -----
 
-## 10. Best Practices
+## 11. Best Practices
 
 ### Jobs & Workflows
 
@@ -1042,7 +1473,7 @@ trigger:
 
 -----
 
-## 11. Quick Examples
+## 12. Quick Examples
 
 ### Example 1: Full Bronze → Silver Pipeline with AutoLoader + DLT
 
