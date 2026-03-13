@@ -2,7 +2,7 @@
 
 - [Overview](overview.md)
 
-- [Spark] (spark.md)
+- [Spark](spark.md)
 
 - [Unity Catalog](unity_catalog.md)
 
