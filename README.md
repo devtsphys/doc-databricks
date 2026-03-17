@@ -12,5 +12,7 @@
 
 - [Mlflow](mlflow.md)
 
+- [Asset Bundles](asset_bundles.md)
+
 - [OpenTofu](open_tofu.md)
 
