@@ -14,5 +14,7 @@
 
 - [Asset Bundles](asset_bundles.md)
 
+- [Databricks CLI](cli.md)
+
 - [OpenTofu](open_tofu.md)
 
