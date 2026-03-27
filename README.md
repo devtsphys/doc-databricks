@@ -18,6 +18,8 @@
 
 - [OpenTofu](open_tofu.md)
 
+- [Lakehouse Monitoring](lakehouse_monitoring.md)
+
 - [Utilities, SDKs](utilities_sdks.md)
 
 
