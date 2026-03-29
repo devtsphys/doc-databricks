@@ -14,6 +14,8 @@
 
 - [Mlflow](mlflow.md)
 
+- [Databricks SQL](databricks_sql.md)
+
 - [Asset Bundles](asset_bundles.md)
 
 - [Databricks CLI](cli.md)
