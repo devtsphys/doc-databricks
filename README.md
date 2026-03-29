@@ -6,6 +6,8 @@
 
 - [Jobs und Pipelines](jobs_pipelines.md)
 
+- [Spark Pipelines](spark_pipelines.md)
+
 - [Unity Catalog](unity_catalog.md)
 
 - [Feature Store](feature_store.md)
