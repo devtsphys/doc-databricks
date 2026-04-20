@@ -25,3 +25,33 @@ feature_groups:
     target_table: "ml_catalog.feature_store.product_stats"
     source_query: "SELECT product_id, stock_level, last_restock_date FROM info_mart.inventory"
 ```
+
+Using the feature generation
+```python
+import yaml
+from databricks.feature_engineering import FeatureEngineeringClient
+
+# 1. YAML laden
+with open("features.yml", "r") as f:
+    config = yaml.safe_load(f)
+
+fe = FeatureEngineeringClient()
+
+# 2. Über Feature-Gruppen iterieren und Tabellen aktualisieren
+for group in config['feature_groups']:
+    print(f"Processing: {group['name']}")
+    
+    # SQL aus YAML ausführen
+    df = spark.sql(group['source_query'])
+    
+    # In Feature Store schreiben (Upsert/Create)
+    fe.write_table(
+        name=group['target_table'],
+        df=df,
+        mode="merge"
+    )
+
+```
+
+
+
