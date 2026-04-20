@@ -1,6 +1,6 @@
 Configuration driven feature engineering
 
-'''yaml
+```yaml
 feature_groups:
   - name: "customer_activity_features"
     description: "Features basierend auf Kundeninteraktionen im Info-Mart"
@@ -24,4 +24,4 @@ feature_groups:
     primary_keys: ["product_id"]
     target_table: "ml_catalog.feature_store.product_stats"
     source_query: "SELECT product_id, stock_level, last_restock_date FROM info_mart.inventory"
-'''
+```
