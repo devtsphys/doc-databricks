@@ -297,6 +297,128 @@ resources:
             notebook_path: "./scripts/run_extraction.py"
 ```
 
+```python
+import numpy as np
+
+def filter_redundant_features(df, correlation_threshold=0.98):
+    """
+    Entfernt Features mit Varianz 0 oder extrem hoher Korrelation.
+    """
+    # 1. Entferne Features ohne Varianz (nur ein Wert vorhanden)
+    # (In Spark über describe oder summary prüfbar, hier als Logik-Konzept)
+    
+    # 2. Korrelationsmatrix für numerische Features (Stichprobe ziehen für Performance)
+    sample_df = df.sample(0.1).toPandas()
+    corr_matrix = sample_df.corr().abs()
+    
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    to_drop = [column for column in upper.columns if any(upper[column] > correlation_threshold)]
+    
+    print(f"Entferne {len(to_drop)} redundante Features: {to_drop}")
+    return df.drop(*to_drop)
+```
+
+Kategorie	Beschreibung	Beispiel	Empfohlene Aggregationen
+Zustands-Flags	Beschreiben, was ein Kunde ist. Ändern sich selten.	is_business, is_active, has_newsletter	AVG (Anteil), MAX (Präsenz), LAST (Aktuell)
+Ereignis-Flags	Beschreiben, ob etwas passiert ist (Trigger).	had_complaint, did_login, payment_failed	SUM (Häufigkeit), MAX (Vorkommen), MIN (Lücken)
+Trend-Flags	Zeigen Richtungswechsel an.	is_churn_risk, is_premium_candidate	STDDEV (Instabilität), FIRST vs LAST (Veränderung)
+
+```python
+from databricks.feature_engineering import FeatureEngineeringClient
+from pyspark.sql import functions as F
+
+class FeatureRunner:
+    def __init__(self, spark_session, yaml_config):
+        self.spark = spark_session
+        self.config = yaml_config
+        self.fe = FeatureEngineeringClient() # UC Feature Engineering Client
+
+    def run_and_register(self, df_base, catalog, schema):
+        # 1. Basis-Features berechnen (wie bisher)
+        df_final = self._calculate_all_features(df_base)
+        
+        table_name = f"{catalog}.{schema}.customer_features_gold"
+        
+        # 2. Delta Tabelle im Unity Catalog erstellen/überschreiben
+        # WICHTIG: Primary Key ist für Feature-Tabellen im UC zwingend erforderlich
+        df_final.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(table_name)
+        
+        # 3. Tabelle als Feature-Tabelle registrieren (falls noch nicht geschehen)
+        # Dies verknüpft die Tabelle offiziell mit dem Feature Store
+        try:
+            self.fe.get_table(table_name)
+            print(f"Tabelle {table_name} ist bereits registriert.")
+        except:
+            print(f"Registriere {table_name} im Feature Store...")
+            self.fe.register_table(
+                delta_table=table_name,
+                primary_keys=["customer_hk", "snapshot_date"], # Deine PKs aus dem Data Vault
+                description="Zentrale Feature-Tabelle aus Info Mart Snapshots"
+            )
+            
+        return df_final
+```
+
+```python
+from pyspark.sql import functions as F
+from pyspark.sql.window import Window
+
+class FeatureRunner:
+    def __init__(self, spark_session, yaml_config):
+        self.spark = spark_session
+        self.config = yaml_config
+        self.seconds_per_day = 86400
+
+    def run_and_save(self, df_base, target_catalog, target_schema):
+        # Wir speichern die DataFrames in einem Dictionary { '30d': df, '90d': df, ... }
+        # plus einen für 'static' Features
+        window_outputs = {}
+        
+        # 1. Statische Features (immer in allen Tabellen dabei)
+        static_features = [f for f in self.config['features'] if f['type'] == "sql_expr"]
+        df_static = df_base
+        for f in static_features:
+            df_static = df_static.withColumn(f['name'], F.expr(f['expression']))
+        
+        # 2. Windowed Features nach Zeitfenstern gruppieren
+        windowed_configs = [f for f in self.config['features'] if f['type'] == "windowed_agg"]
+        
+        # Sammle alle vorkommenden Zeitfenster
+        all_windows = set()
+        for f in windowed_configs:
+            all_windows.update(f['windows'])
+            
+        for days in all_windows:
+            df_window = df_static # Basis inkl. statischer Features
+            
+            for f in windowed_configs:
+                if days in f['windows']:
+                    source_col = f['source_column']
+                    window_spec = Window.partitionBy("customer_hk") \
+                                        .orderBy(F.col("snapshot_date").cast("long")) \
+                                        .rangeBetween(-days * self.seconds_per_day, 0)
+                    
+                    for method in f['methods']:
+                        col_name = f"{f['name']}_{method}_{days}d"
+                        # Dynamischer Aufruf der Spark-Funktion
+                        agg_func = getattr(F, method.lower())
+                        df_window = df_window.withColumn(col_name, agg_func(source_col).over(window_spec))
+            
+            # Speichern der Tabelle pro Zeitfenster
+            table_name = f"{target_catalog}.{target_schema}.customer_features_{days}d"
+            print(f"Speichere Tabelle: {table_name}")
+            df_window.write.mode("overwrite").saveAsTable(table_name)
+            
+            window_outputs[f"{days}d"] = df_window
+            
+        return window_outputs
+
+# Anwendung
+# runner = FeatureRunner(spark, config)
+# runner.run_and_save(df_mart, "main", "gold_features")
+```
+
+
 
 
 
