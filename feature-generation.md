@@ -276,6 +276,23 @@ feature_groups:
       - { suffix: "3m", days: 90 }
       - { suffix: "6m", days: 180 }
 
+# resources/jobs.yml
+resources:
+  jobs:
+    feature_pipeline:
+      name: "Feature Engineering with Validation"
+      tasks:
+        - task_key: "validate_config"
+          notebook_task:
+            notebook_path: "./scripts/validate_features.py"
+        
+        - task_key: "run_feature_extraction"
+          depends_on:
+            - task_key: "validate_config" # Startet nur, wenn Validierung OK
+          notebook_task:
+            notebook_path: "./scripts/run_extraction.py"
+
+
 ```
 
 
