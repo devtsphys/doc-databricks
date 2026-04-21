@@ -51,8 +51,7 @@ for group in config['feature_groups']:
         mode="merge"
     )
 
-```
-
+```python
 Feature validation
 ```python
 import yaml
@@ -101,10 +100,9 @@ def validate_feature_config(config_path):
 
 # Aufruf im Databricks Notebook
 validate_feature_config("features.yml")
-
 ```
 
-```
+```python
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.catalog import MonitorTimeSeries, MonitorConfig
 
@@ -123,7 +121,7 @@ w.monitors.create(
 )
 ```
 
-```
+```python
 def validate_data_quality(df, expectations):
     """
     Prüft den Dataframe gegen die in der YAML definierten Regeln.
@@ -149,8 +147,9 @@ def validate_data_quality(df, expectations):
 # ... nach df_features = spark.sql(query)
 validate_data_quality(df_features, group.get('expectations', []))
 # ... vor fe.write_table(...)
+```
 
-
+```
 feature_groups:
   - name: "customer_behavior_metrics"
     primary_keys: ["customer_id"]
@@ -159,7 +158,9 @@ feature_groups:
       - { column: "customer_id", condition: "IS NOT NULL", action: "FAIL" }
       - { column: "spend_sum_1m", condition: ">= 0", action: "WARN" }
       - { column: "event_time", condition: "> '2024-01-01'", action: "FAIL" }
+```
 
+```yaml
 resources:
   jobs:
     daily_feature_generation:
@@ -178,8 +179,9 @@ resources:
             spark_version: "14.3.x-scala2.12"
             node_type_id: "Standard_DS3_v2"
             num_workers: 2
+```
 
-
+```python
 import yaml
 from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql import SparkSession
@@ -260,7 +262,9 @@ def generate_feature_sql(group_cfg):
 
 # Testlauf
 # print(generate_feature_sql(config['feature_groups'][0]))
+```
 
+```yaml
 feature_groups:
   - name: "customer_behavior_metrics"
     source_table: "info_mart.orders"
@@ -291,8 +295,6 @@ resources:
             - task_key: "validate_config" # Startet nur, wenn Validierung OK
           notebook_task:
             notebook_path: "./scripts/run_extraction.py"
-
-
 ```
 
 
