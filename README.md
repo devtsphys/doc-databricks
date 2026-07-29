@@ -4,6 +4,8 @@
 
 - [Spark](spark.md)
 
+- [PySpark ML](pyspark-ml.md)
+
 - [Jobs und Pipelines](jobs_pipelines.md)
 
 - [Spark Pipelines](spark_pipelines.md)
